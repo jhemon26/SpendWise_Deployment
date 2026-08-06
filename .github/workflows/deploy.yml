@@ -59,7 +59,12 @@ jobs:
 
           exit "$fail"
 
+      # enablement: true flips the repo's Pages source to "GitHub Actions".
+      # Without it, the legacy branch-based builder also deploys this SHA and
+      # the two race — both deployments then hang and time out.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:

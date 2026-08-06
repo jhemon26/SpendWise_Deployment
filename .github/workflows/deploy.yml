@@ -1,0 +1,76 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow the workflow to publish to Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let an in-flight deploy finish, but only queue one more behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify icons and manifest
+        run: |
+          fail=0
+
+          # Every asset index.html and the manifest point at must exist.
+          for f in index.html manifest.webmanifest icon-180.png icon-192.png icon-512.png; do
+            if [ ! -f "$f" ]; then
+              echo "::error file=$f::missing required file"
+              fail=1
+            fi
+          done
+          if [ "$fail" -eq 1 ]; then exit 1; fi
+
+          # Icons must be real PNGs at their nominal size, or installs render blank.
+          check_png() {
+            actual=$(file -b "$1")
+            case "$actual" in
+              "PNG image data, $2 x $2"*) echo "ok   $1  ($2x$2)" ;;
+              *) echo "::error file=$1::expected ${2}x${2} PNG, got: $actual"; return 1 ;;
+            esac
+          }
+          check_png icon-180.png 180 || fail=1
+          check_png icon-192.png 192 || fail=1
+          check_png icon-512.png 512 || fail=1
+
+          # Pages serves this repo at /<repo>/, so absolute asset paths 404.
+          if grep -qE '(href|src)="/[^/]' index.html; then
+            echo "::error file=index.html::absolute asset path found; use relative paths so the project subpath resolves"
+            grep -nE '(href|src)="/[^/]' index.html
+            fail=1
+          fi
+
+          python3 -c "import json; json.load(open('manifest.webmanifest'))" \
+            || { echo "::error file=manifest.webmanifest::invalid JSON"; fail=1; }
+
+          exit "$fail"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

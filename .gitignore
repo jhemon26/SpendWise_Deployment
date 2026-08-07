@@ -28,6 +28,6 @@ apps/client/ios/
 .idea/
 *.swp
 
-# stray screenshots and images dropped into the repo root
+# stray screenshots dropped into the repo root — but brand assets are tracked
 /*.png
-!prototype/*.png
+!/HeadLogo.png

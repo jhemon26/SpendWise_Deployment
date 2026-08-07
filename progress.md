@@ -4,7 +4,7 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 
 **Last updated:** 7 August 2026
 **Branch:** `development`
-**Tests:** 232 passing — 49 shared-types, 114 server, 69 client
+**Tests:** 253 passing — 49 shared-types, 114 server, 90 client
 **Build:** all three packages typecheck under full strictness; client 106 kB gzipped
 
 ---
@@ -15,15 +15,14 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 Phase 1  Architecture .................. ████████████ done
 Phase 2  Monorepo scaffold ............. ████████████ done
 Phase 3  Backend ....................... ██████████░░ ~85%
-Phase 4  Client ........................ ███████░░░░░ ~55%
+Phase 4  Client ........................ ████████░░░░ ~65%
 Phase 5  Infrastructure ................ ░░░░░░░░░░░░ not started
 Phase 6  CI/CD & store release ......... ░░░░░░░░░░░░ not started
 ```
 
-**Overall: roughly 50% of the way to something shippable.** The backend is the
-mature part. The client can now record and edit transactions and persist them
-locally, but it cannot talk to the API yet and nothing has been deployed to
-DigitalOcean.
+**Overall: roughly 55% of the way to something shippable.** The backend is the
+mature part. The client records, persists and syncs — but there are no auth
+screens, so nothing signs in yet, and nothing has been deployed to DigitalOcean.
 
 > An earlier version of this file said "80%". That counted the backend as the
 > whole project. It is not — the infrastructure does not exist at all, and the
@@ -83,7 +82,7 @@ DigitalOcean.
 
 ---
 
-## Phase 4 — Client (~55%)
+## Phase 4 — Client (~65%)
 
 **Done**
 
@@ -105,13 +104,17 @@ DigitalOcean.
 **Left**
 
 - [ ] Category and bank editors
-- [ ] `SyncTransport` HTTP implementation — the engine cannot reach the API
+- [x] **`SyncTransport` over HTTP** — bearer auth, single-flight refresh on 401,
+      health probe, responses validated against the shared schema
+- [x] **Client ↔ server verified end to end** — the real client stack pushes a
+      locally-created transaction to the real API and it lands in Postgres
 - [ ] **Verify Dexie against a real browser.** It passes 29 contract tests under
       fake-indexeddb, but headless Chrome in this environment would not complete
       IndexedDB operations, so a real-browser run is still outstanding
 - [ ] Capacitor SQLite adapter — native
 - [ ] Connectivity detection (Capacitor Network / `navigator.onLine`)
-- [ ] Auth screens and token storage
+- [ ] **Auth screens and token storage** — the sync engine only starts once a
+      token exists, so this is what unblocks real syncing
 - [ ] Onboarding: welcome, setup wizard, coach marks (§3.5)
 - [ ] Light theme is defined in tokens but has no toggle
 

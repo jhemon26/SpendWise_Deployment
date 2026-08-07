@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging, development]
+  pull_request:
+    branches: [main, staging, development]
+
+# A newer push supersedes an in-flight run on the same ref. Cancelling here is
+# safe because CI has no side effects; the deploy workflow deliberately does NOT
+# cancel, since a half-finished deploy is worse than a slow one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  quality:
+    name: Typecheck, lint and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # shared-types must be built first: the server consumes its CJS output and
+      # the client its ESM. `pnpm -r` resolves the workspace graph.
+      - name: Build workspace
+        run: pnpm -r build
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Unit tests
+        run: pnpm -r test
+
+      # ARCHITECTURE §3.6 budgets the initial JS at 200 kB gzipped. Enforced
+      # here rather than trusted, because bundle size only ever grows.
+      - name: Bundle budget
+        run: |
+          MAX_BYTES=204800
+          FILE=$(find apps/client/dist/assets -name 'index-*.js' | head -1)
+          if [ -z "$FILE" ]; then
+            echo "::error::no client bundle found — did the build run?"
+            exit 1
+          fi
+          SIZE=$(gzip -c "$FILE" | wc -c | tr -d ' ')
+          echo "gzipped bundle: ${SIZE} bytes (budget ${MAX_BYTES})"
+          if [ "$SIZE" -gt "$MAX_BYTES" ]; then
+            echo "::error file=${FILE}::bundle is ${SIZE} bytes, over the ${MAX_BYTES} budget"
+            exit 1
+          fi
+
+  integration:
+    name: Integration and security gates
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGSUPER: postgres
+      PGPASSWORD: postgres
+      REDIS_TEST_PORT: '6379'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @spendwise/shared-types build
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      # The integration suites skip themselves when no database is reachable —
+      # convenient locally, dangerous in CI, where a silent skip looks identical
+      # to a pass. Fail loudly if the service is not actually up.
+      - name: Assert services are reachable
+        run: |
+          pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGSUPER" || { echo "::error::PostgreSQL not reachable"; exit 1; }
+          redis-cli -p "$REDIS_TEST_PORT" ping | grep -q PONG || { echo "::error::Redis not reachable"; exit 1; }
+
+      - name: Integration tests
+        run: pnpm -r test
+
+      # ARCHITECTURE §9.2 / §18: the cross-tenant isolation gate. A leak here is
+      # a reportable breach, so it blocks the build.
+      - name: RLS release gate
+        working-directory: apps/server
+        run: ./scripts/rls-gate.sh
+
+      # Prove the integration suites really ran rather than skipping. Without
+      # this, a misconfigured service turns the whole job into a no-op that
+      # reports success.
+      - name: Assert integration tests were not skipped
+        run: |
+          OUT=$(pnpm --filter @spendwise/server test 2>&1)
+          echo "$OUT" | tail -5
+          if echo "$OUT" | grep -qE "[0-9]+ skipped"; then
+            echo "::error::integration tests skipped — the database service was not reachable"
+            exit 1
+          fi
+
+  security:
+    name: Dependency and secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks needs history to scan it
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

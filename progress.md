@@ -4,7 +4,7 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 
 **Last updated:** 7 August 2026
 **Branch:** `development`
-**Tests:** 260 passing — 49 shared-types, 121 server, 90 client
+**Tests:** 276 passing — 49 shared-types, 121 server, 106 client
 **Build:** all three packages typecheck under full strictness; client 106 kB gzipped
 
 ---
@@ -15,12 +15,12 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 Phase 1  Architecture .................. ████████████ done
 Phase 2  Monorepo scaffold ............. ████████████ done
 Phase 3  Backend ....................... ██████████░░ ~85%
-Phase 4  Client ........................ ████████░░░░ ~65%
+Phase 4  Client ........................ █████████░░░ ~75%
 Phase 5  Infrastructure ................ ░░░░░░░░░░░░ not started
 Phase 6  CI/CD & store release ......... ░░░░░░░░░░░░ not started
 ```
 
-**Overall: roughly 55% of the way to something shippable.** The backend is the
+**Overall: roughly 60% of the way to something shippable.** The backend is the
 mature part. The client records, persists and syncs — but there are no auth
 screens, so nothing signs in yet, and nothing has been deployed to DigitalOcean.
 
@@ -85,7 +85,7 @@ screens, so nothing signs in yet, and nothing has been deployed to DigitalOcean.
 
 ---
 
-## Phase 4 — Client (~65%)
+## Phase 4 — Client (~75%)
 
 **Done**
 
@@ -116,8 +116,11 @@ screens, so nothing signs in yet, and nothing has been deployed to DigitalOcean.
       IndexedDB operations, so a real-browser run is still outstanding
 - [ ] Capacitor SQLite adapter — native
 - [ ] Connectivity detection (Capacitor Network / `navigator.onLine`)
-- [ ] **Auth screens and token storage** — the sync engine only starts once a
-      token exists, so this is what unblocks real syncing
+- [x] **Auth screens and session restore** — passwordless sign-in UI, phone OTP
+      flow end to end, and the cookie-for-token exchange that keeps a session
+      alive across a reload. Sync starts automatically once signed in
+- [ ] Real Google/Apple buttons — the UI is there but disabled until OAuth
+      client IDs are configured
 - [ ] Onboarding: welcome, setup wizard, coach marks (§3.5)
 - [ ] Light theme is defined in tokens but has no toggle
 

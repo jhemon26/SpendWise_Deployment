@@ -4,6 +4,10 @@ import { useApp } from '../core/store.js';
 import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
 import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
+import { AuthScreen } from '../features/auth/AuthScreen.js';
+import { AuthClient } from '../core/auth/client.js';
+import { createSync, tokenStore } from '../core/sync/index.js';
+import type { SyncEngine } from '../core/sync/engine.js';
 import { derive } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
 import { Home, Activity, Budgets, Insights, Profile, type ScreenData } from './screens.js';
@@ -24,11 +28,22 @@ const TABS: Array<{ id: Tab; label: string; path: string }> = [
  * in the same way for native — feature code never learns which is underneath.
  */
 let db: StorageAdapter;
+let engine: SyncEngine | null = null;
+
+/**
+ * API base. Empty means "local only" — the app is fully usable offline, so a
+ * missing API is a degraded mode, not a fatal error.
+ */
+const API_BASE = (import.meta.env['VITE_API_BASE'] as string | undefined) ?? '';
+const DEVICE_ID = 'web-device';
+const auth = new AuthClient({ baseUrl: API_BASE, tokens: tokenStore, deviceId: DEVICE_ID });
 
 export function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('home');
   const [bootError, setBootError] = useState<string | null>(null);
   const [degraded, setDegraded] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const state = useApp();
@@ -41,6 +56,14 @@ export function App(): JSX.Element {
       const opened = await openLocalStore();
       db = opened.adapter;
       if (opened.degraded) setDegraded(opened.reason ?? 'unknown');
+
+      // Trade the HttpOnly cookie for a fresh access token. The access token is
+      // memory-only, so this is what makes "still signed in" survive a reload.
+      if (API_BASE) {
+        const restored = await auth.restore();
+        if (restored) { setSignedIn(true); startSync(); }
+      }
+      setAuthChecked(true);
       // Nobody meets an empty app (ARCHITECTURE §3.5). Real onboarding replaces
       // this with the setup wizard; the shape of the data is identical.
       if ((await db.all('transactions')).length === 0) await seedDemo(db);
@@ -53,6 +76,16 @@ export function App(): JSX.Element {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function startSync(): void {
+    const setup = createSync(db, DEVICE_ID, API_BASE || undefined, () => {
+      // Refresh failed for good — reuse detection may have killed the family.
+      setSignedIn(false);
+      engine?.stop();
+      engine = null;
+    });
+    if (setup) { engine = setup.engine; engine.start(); engine.wake(); }
+  }
 
   const now = useMemo(() => new Date(), []);
   const d = useMemo(
@@ -82,6 +115,12 @@ export function App(): JSX.Element {
     insights: ['Insights', 'This month'],
     profile: ['Profile', 'Settings and categories'],
   };
+
+  // An API is configured but nobody is signed in: show sign-in. With no API
+  // the app runs entirely locally and never asks.
+  if (API_BASE && authChecked && !signedIn) {
+    return <AuthScreen auth={auth} onSignedIn={() => { setSignedIn(true); startSync(); }} />;
+  }
 
   return (
     <div style={{
@@ -157,6 +196,7 @@ export function App(): JSX.Element {
           } else {
             await state.addTransaction(db, draft);
           }
+          engine?.wake(); // disk, screen, network — in that order
           setSheetOpen(false);
           setEditing(null);
         }}

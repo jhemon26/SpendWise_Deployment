@@ -8,6 +8,11 @@ import { InMemorySyncRepo } from './sync/sync.repo.js';
 import { TokenService } from './auth/token.service.js';
 import { InMemorySessionStore } from './auth/session.store.js';
 import { AuthGuard } from './auth/auth.guard.js';
+import { AuthController } from './auth/auth.controller.js';
+import { IdentityService } from './auth/identity.service.js';
+import { OidcVerifier, GOOGLE, APPLE } from './auth/oidc.verifier.js';
+import { OtpService, InMemoryOtpStore } from './auth/otp.service.js';
+import { Db } from './db/db.js';
 import { loadEnv } from './config/env.js';
 
 /**
@@ -18,7 +23,7 @@ import { loadEnv } from './config/env.js';
  * a provider change rather than a rewrite of the security-critical logic.
  */
 @Module({
-  controllers: [HealthController, SyncController],
+  controllers: [HealthController, SyncController, AuthController],
   providers: [
     {
       provide: TokenService,
@@ -48,6 +53,31 @@ import { loadEnv } from './config/env.js';
     {
       provide: SyncService,
       useFactory: (): SyncService => new SyncService(new InMemorySyncRepo()),
+    },
+    {
+      provide: Db,
+      useFactory: (): Db => {
+        const env = loadEnv();
+        const url = env.DATABASE_URL ?? 'postgres://spendwise_app@127.0.0.1:5432/spendwise';
+        return new Db({ connectionString: url });
+      },
+    },
+    { provide: IdentityService, useFactory: (db: Db) => new IdentityService(db), inject: [Db] },
+    {
+      provide: OidcVerifier,
+      useFactory: (): OidcVerifier =>
+        new OidcVerifier({
+          google: { ...GOOGLE, audience: process.env['GOOGLE_CLIENT_ID'] ?? 'unset' },
+          apple: { ...APPLE, audience: process.env['APPLE_CLIENT_ID'] ?? 'app.spendwise.mobile' },
+        }),
+    },
+    {
+      provide: OtpService,
+      useFactory: (): OtpService =>
+        new OtpService(new InMemoryOtpStore(), {
+          // Premium-rate ranges commonly abused for SMS pumping (ARCHITECTURE 9.1).
+          blockedPrefixes: ['+8811', '+8812', '+8813', '+239', '+676', '+675'],
+        }),
     },
     // Deny by default: every route needs a valid bearer token unless it opts out.
     { provide: APP_GUARD, useClass: AuthGuard },

@@ -92,7 +92,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (!available) return;
+  if (!available || !db) return;
   await db.close();
   const root = await superClient('postgres');
   await root.query(`DROP DATABASE IF EXISTS ${DB}`);

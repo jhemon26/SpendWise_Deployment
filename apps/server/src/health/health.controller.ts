@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { Public } from '../common/public.decorator.js';
 
 /**
  * Unauthenticated liveness probe.
@@ -12,6 +13,7 @@ import { Controller, Get } from '@nestjs/common';
 export class HealthController {
   private readonly startedAt = Date.now();
 
+  @Public()
   @Get()
   check(): { status: 'ok'; uptime_s: number } {
     return {

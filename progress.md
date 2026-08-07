@@ -9,7 +9,7 @@ This document tracks the live implementation status, completed achievements, cur
 - **Current Phase**: Phase 3 — Central Backend Development (Phases 1–2 complete)
 - **Architecture Type**: Local-First / Sync-Enabled (Offline-First)
 - **Deployment Model**: Cost-Optimized Single-Droplet ($6–$12/mo) + Cloudflare
-- **Overall Progress**: 30% (Architecture finalized; monorepo scaffolded, tested and building)
+- **Overall Progress**: 45% (Architecture done; monorepo, database, auth tokens and sync engine built and tested)
 
 ---
 
@@ -39,13 +39,24 @@ We are currently establishing the system scaffolding, tracking setup, and prepar
 typecheck under full TypeScript strictness, server boots and serves `/v1/health`
 with security headers, client builds to 60.74 kB gzipped (budget: 200 kB).
 
-### Phase 3: Central Backend Development (PENDING)
-- [ ] Configure TypeORM connection to PostgreSQL.
-- [ ] Implement JWT Authentication with Refresh Token Rotation (RTR).
-- [ ] Implement Multi-Factor Authentication (MFA / TOTP) and security guards.
-- [ ] Build the database synchronization backend controller and service.
-- [ ] Set up Redis integration for rate-limiting, session blacklisting, and queues.
-- [ ] Implement partitioned audit logging and transaction logging.
+### Phase 3: Central Backend Development (IN PROGRESS)
+- [x] PostgreSQL schema, monthly partitioning, and indexes (`migrations/001_init.sql`).
+- [x] Row-Level Security with a release gate (`002_rls.sql`, `scripts/rls-gate.sh`).
+- [x] JWT authentication with Refresh Token Rotation and reuse detection.
+- [x] Deny-by-default `AuthGuard` with an explicit `@Public()` opt-out.
+- [x] Sync push/pull service: idempotency, conflict detection, clock-skew
+      correction, server-authoritative FX.
+- [x] Sync controller wired and verified end-to-end over HTTP.
+- [ ] OIDC providers (Google, Apple), phone OTP, email magic link, identity linking.
+- [ ] Optional TOTP enrolment.
+- [ ] Swap in-memory stores for PostgreSQL repositories.
+- [ ] Redis: rate limiting, session denylist, BullMQ queues.
+- [ ] Partitioned audit logging wired to mutations.
+
+**Note:** auth no longer uses TypeORM or Argon2 — the passwordless federated
+design (ARCHITECTURE §9.1) removed password storage entirely, and repositories
+are plain interfaces so the persistence layer can be swapped without touching
+security-critical logic.
 
 ### Phase 4: Local-First Frontend Development (PENDING)
 - [ ] Reorganize existing `index.html` prototype views into React page components.

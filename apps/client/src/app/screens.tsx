@@ -12,6 +12,8 @@ export interface ScreenData {
   now: Date;
   displayName: string;
   dayToDayMinor: number;
+  /** Tap a transaction row to edit it. Absent in read-only contexts. */
+  onEdit?: ((t: Transaction) => void) | undefined;
 }
 
 const money = (minor: number, cur: string): string => formatMoney(minor, cur);
@@ -20,7 +22,7 @@ const catOf = (cats: Category[], id: string | null): Category | undefined =>
 
 /* ── Home ─────────────────────────────────────────────────────────────── */
 
-export function Home({ transactions, categories, d, currency, dayToDayMinor }: ScreenData): JSX.Element {
+export function Home({ transactions, categories, d, currency, dayToDayMinor, onEdit }: ScreenData): JSX.Element {
   const st = statusOf(d.spentPct);
   const over = d.deltaMinor > 0;
   const recent = transactions.filter((t) => !t.deleted_at)
@@ -91,7 +93,7 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor }: S
         <CardHead title="Recent activity" />
         {recent.length === 0
           ? <Empty icon="other" title="No activity yet" body="Tap + to record your first transaction." />
-          : recent.map((t) => <Row key={t.local_id} t={t} cats={categories} />)}
+          : recent.map((t) => <Row key={t.local_id} t={t} cats={categories} onEdit={onEdit} />)}
       </Card>
     </>
   );
@@ -112,10 +114,17 @@ function Tile({ label, value, foot, tone }: { label: string; value: string; foot
  * currency — showing a €14 lunch as "£11.90" hides what the user actually paid.
  * The base-currency value is what feeds the budget totals (see selectors).
  */
-function Row({ t, cats }: { t: Transaction; cats: Category[] }): JSX.Element {
+function Row({ t, cats, onEdit }: { t: Transaction; cats: Category[]; onEdit?: ((t: Transaction) => void) | undefined }): JSX.Element {
   const c = catOf(cats, t.category_id);
+  const Tag = onEdit ? 'button' : 'div';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3) 0' }}>
+    <Tag
+      {...(onEdit ? { onClick: () => onEdit(t), type: 'button' as const } : {})}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3) 0',
+        width: '100%', textAlign: 'left', background: 'none', border: 0,
+        color: 'inherit', font: 'inherit', cursor: onEdit ? 'pointer' : 'default',
+      }}>
       <Icon name={t.is_income ? 'income' : (c?.icon ?? 'other')} colour={t.is_income ? '#10B981' : (c?.colour ?? '#64748B')} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -129,13 +138,13 @@ function Row({ t, cats }: { t: Transaction; cats: Category[] }): JSX.Element {
       <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, color: t.is_income ? 'var(--positive)' : undefined }}>
         {t.is_income ? '+' : '−'}{money(t.amount_minor, t.currency)}
       </p>
-    </div>
+    </Tag>
   );
 }
 
 /* ── Activity ─────────────────────────────────────────────────────────── */
 
-export function Activity({ transactions, categories, currency, now }: ScreenData): JSX.Element {
+export function Activity({ transactions, categories, currency, now, onEdit }: ScreenData): JSX.Element {
   const groups = groupByDay(transactions, now);
   if (groups.length === 0) {
     return <Card><Empty icon="other" title="Nothing here yet" body="No transactions recorded this month." /></Card>;
@@ -151,7 +160,7 @@ export function Activity({ transactions, categories, currency, now }: ScreenData
             </span>
           </div>
           <Card style={{ padding: 'var(--s1) var(--s4)' }}>
-            {g.items.map((t) => <Row key={t.local_id} t={t} cats={categories} />)}
+            {g.items.map((t) => <Row key={t.local_id} t={t} cats={categories} onEdit={onEdit} />)}
           </Card>
         </div>
       ))}

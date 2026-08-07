@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Transaction } from '@spendwise/shared-types';
 import { useApp } from '../core/store.js';
-import { MemoryAdapter, type StorageAdapter } from '../core/db/adapter.js';
+import type { StorageAdapter } from '../core/db/adapter.js';
+import { openLocalStore } from '../core/db/index.js';
+import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
 import { derive } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
 import { Home, Activity, Budgets, Insights, Profile, type ScreenData } from './screens.js';
@@ -14,21 +17,40 @@ const TABS: Array<{ id: Tab; label: string; path: string }> = [
   { id: 'insights', label: 'Insights', path: 'M4 16l5-5 3.5 3.5L20 7M15 7h5v5' },
 ];
 
-/** Single adapter for the app's lifetime. Dexie swaps in here on web. */
-const db: StorageAdapter = new MemoryAdapter();
+/**
+ * One adapter for the app's lifetime, resolved at boot.
+ *
+ * IndexedDB where it works, memory where it does not. Capacitor SQLite slots
+ * in the same way for native — feature code never learns which is underneath.
+ */
+let db: StorageAdapter;
 
 export function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('home');
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [degraded, setDegraded] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const state = useApp();
 
   useEffect(() => {
-    void (async () => {
-      await db.init();
+    // NOT `void (async ...)()`. That swallows the rejection, so any failure in
+    // here leaves the app on "Loading…" forever with nothing in the console —
+    // which is exactly what happened the first time IndexedDB was wired in.
+    (async () => {
+      const opened = await openLocalStore();
+      db = opened.adapter;
+      if (opened.degraded) setDegraded(opened.reason ?? 'unknown');
       // Nobody meets an empty app (ARCHITECTURE §3.5). Real onboarding replaces
       // this with the setup wizard; the shape of the data is identical.
       if ((await db.all('transactions')).length === 0) await seedDemo(db);
       await state.hydrate(db);
-    })();
+    })().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.error('[boot] local database failed:', err);
+      setBootError(msg);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -50,6 +72,7 @@ export function App(): JSX.Element {
     now,
     displayName: state.displayName,
     dayToDayMinor: state.dayToDayMinor,
+    onEdit: (t: Transaction) => { setEditing(t); setSheetOpen(true); },
   };
 
   const title: Record<Tab, [string, string]> = {
@@ -92,7 +115,19 @@ export function App(): JSX.Element {
       </header>
 
       <main style={{ flex: 1, overflowY: 'auto', padding: '0 var(--s5) 104px', display: 'flex', flexDirection: 'column', gap: 'var(--s4)' }}>
-        {!state.ready ? (
+        {degraded && (
+          <p style={{
+            fontSize: 'var(--fs-2xs)', color: 'var(--warning)', background: 'var(--warning-soft)',
+            padding: 'var(--s2) var(--s3)', borderRadius: 'var(--r-sm)', fontWeight: 600,
+          }}>
+            Offline storage unavailable ({degraded}) — this session will not be saved.
+          </p>
+        )}
+        {bootError ? (
+          <p style={{ color: 'var(--danger)', fontSize: 'var(--fs-sm)' }}>
+            Could not open local storage: {bootError}
+          </p>
+        ) : !state.ready ? (
           <p style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-sm)' }}>Loading…</p>
         ) : tab === 'home' ? <Home {...data} />
           : tab === 'activity' ? <Activity {...data} />
@@ -101,12 +136,76 @@ export function App(): JSX.Element {
           : <Profile {...data} />}
       </main>
 
+      <AddSheet
+        open={sheetOpen}
+        editing={editing}
+        categories={state.categories}
+        banks={state.banks}
+        derived={d}
+        baseCurrency={state.baseCurrency}
+        onClose={() => { setSheetOpen(false); setEditing(null); }}
+        onSave={async (draft: SaveDraft) => {
+          if (editing) {
+            await state.editTransaction(db, editing.local_id, {
+              amount_minor: draft.isIncome ? draft.amountMinor : -draft.amountMinor,
+              base_minor: draft.isIncome ? draft.amountMinor : -draft.amountMinor,
+              category_id: draft.categoryId,
+              bank_id: draft.bankId,
+              merchant: draft.merchant,
+              is_income: draft.isIncome,
+            });
+          } else {
+            await state.addTransaction(db, draft);
+          }
+          setSheetOpen(false);
+          setEditing(null);
+        }}
+        onDelete={async (localId) => {
+          await state.removeTransaction(db, localId);
+          setSheetOpen(false);
+          setEditing(null);
+        }}
+      />
+
       <nav aria-label="Main" style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30, height: 84, paddingBottom: 12,
-        display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', alignItems: 'center',
+        display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', alignItems: 'center',
         background: 'rgba(6,7,10,.94)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--line)',
       }}>
-        {TABS.map((t) => (
+        {TABS.slice(0, 2).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            aria-current={tab === t.id ? 'page' : undefined}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+              fontSize: 10, fontWeight: 700, background: 'none', border: 0, cursor: 'pointer',
+              color: tab === t.id ? 'var(--text)' : 'var(--text-dim)', padding: 'var(--s2) 0',
+            }}
+          >
+            <svg viewBox="0 0 24 24" width={22} height={22} stroke="currentColor" strokeWidth={1.9}
+                 fill="none" strokeLinecap="round" strokeLinejoin="round">
+              <path d={t.path} />
+            </svg>
+            <span>{t.label}</span>
+          </button>
+        ))}
+
+        <button
+          onClick={() => { setEditing(null); setSheetOpen(true); }}
+          aria-label="Add transaction"
+          style={{
+            width: 56, height: 56, borderRadius: 'var(--r-pill)', justifySelf: 'center', border: 0,
+            background: 'linear-gradient(135deg,var(--brand-cyan) 0%,var(--brand) 55%,var(--brand-purple) 100%)',
+            color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer',
+            boxShadow: '0 8px 22px -6px rgba(99,102,241,.75), 0 0 0 5px rgba(99,102,241,.10)',
+          }}
+        >
+          <svg viewBox="0 0 24 24" width={24} height={24} stroke="currentColor" strokeWidth={2.4}
+               fill="none" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+
+        {TABS.slice(2).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}

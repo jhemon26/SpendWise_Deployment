@@ -4,7 +4,7 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 
 **Last updated:** 7 August 2026
 **Branch:** `development`
-**Tests:** 197 passing — 49 shared-types, 114 server, 34 client
+**Tests:** 232 passing — 49 shared-types, 114 server, 69 client
 **Build:** all three packages typecheck under full strictness; client 69.46 kB gzipped
 
 ---
@@ -15,14 +15,15 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 Phase 1  Architecture .................. ████████████ done
 Phase 2  Monorepo scaffold ............. ████████████ done
 Phase 3  Backend ....................... ██████████░░ ~85%
-Phase 4  Client ........................ █████░░░░░░░ ~40%
+Phase 4  Client ........................ ███████░░░░░ ~55%
 Phase 5  Infrastructure ................ ░░░░░░░░░░░░ not started
 Phase 6  CI/CD & store release ......... ░░░░░░░░░░░░ not started
 ```
 
-**Overall: roughly 45% of the way to something shippable.** The backend is the
-mature part. The client renders but cannot yet record a transaction, and nothing
-has been deployed to DigitalOcean.
+**Overall: roughly 50% of the way to something shippable.** The backend is the
+mature part. The client can now record and edit transactions and persist them
+locally, but it cannot talk to the API yet and nothing has been deployed to
+DigitalOcean.
 
 > An earlier version of this file said "80%". That counted the backend as the
 > whole project. It is not — the client is read-only and the infrastructure does
@@ -96,11 +97,16 @@ has been deployed to DigitalOcean.
 
 **Left — and this is the honest gap**
 
-- [ ] **Add / edit transaction sheet.** The store actions exist and are wired,
-      but no UI reaches them. **The app is currently read-only.**
+- [x] **Add / edit transaction sheet** — FAB to add, tap a row to edit, delete,
+      with the live impact preview
+- [x] **Dexie/IndexedDB adapter**, behind a shared contract suite run against
+      *both* adapters, plus a timeout-and-degrade opener so unavailable storage
+      can never hang the app
 - [ ] Category and bank editors
 - [ ] `SyncTransport` HTTP implementation — the engine cannot reach the API
-- [ ] Dexie adapter — web data does not survive a refresh
+- [ ] **Verify Dexie against a real browser.** It passes 29 contract tests under
+      fake-indexeddb, but headless Chrome in this environment would not complete
+      IndexedDB operations, so a real-browser run is still outstanding
 - [ ] Capacitor SQLite adapter — native
 - [ ] Connectivity detection (Capacitor Network / `navigator.onLine`)
 - [ ] Auth screens and token storage
@@ -136,8 +142,7 @@ has been deployed to DigitalOcean.
 | 1 | **Pages Actions workflow is dormant** — `total_count: 0`, not firing on push | Live site is published by the legacy branch builder instead. Needs repo-settings access; likely Pages source is still "Deploy from a branch" |
 | 2 | **App icons are the old teal wallet** | Off-brand against the indigo/cyan UI. A new logo was supplied but it is a horizontal lockup with text — unusable as an icon without extracting the mark |
 | 3 | **Logo palette conflicts with the app** | Logo is pink on dark purple; UI is indigo/cyan/violet. One of them has to move |
-| 4 | **Client cannot record a transaction** | Read-only until the add sheet exists |
-| 5 | **No persistence on web** | `MemoryAdapter` is in use; Dexie not wired |
+| 4 | **Dexie unverified in a real browser** | Contract tests pass under fake-indexeddb; headless Chrome could not complete IndexedDB here. Open it in Chrome/Safari and confirm data survives a refresh |
 
 ---
 

@@ -1,96 +1,174 @@
-# SpendWise Project Progress Tracker
+# SpendWise — Progress
 
-This document tracks the live implementation status, completed achievements, current activities, and future roadmap of the **SpendWise** secure, offline-first personal finance application.
+New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 
----
-
-## 📊 High-Level Status
-
-- **Current Phase**: Phase 3 — Central Backend Development (Phases 1–2 complete)
-- **Architecture Type**: Local-First / Sync-Enabled (Offline-First)
-- **Deployment Model**: Cost-Optimized Single-Droplet ($6–$12/mo) + Cloudflare
-- **Overall Progress**: 80% (Architecture done; monorepo, database, auth tokens and sync engine built and tested)
+**Last updated:** 7 August 2026
+**Branch:** `development`
+**Tests:** 197 passing — 49 shared-types, 114 server, 34 client
+**Build:** all three packages typecheck under full strictness; client 69.46 kB gzipped
 
 ---
 
-## 🚀 Active Focus
+## Where we are
 
-Phase 3 backend is substantially complete: schema, RLS, tokens, identity, sync and auth endpoints are built and tested (107 server tests, 22 against live PostgreSQL). Remaining: Redis, audit logging, TOTP, magic-link delivery.
+```
+Phase 1  Architecture .................. ████████████ done
+Phase 2  Monorepo scaffold ............. ████████████ done
+Phase 3  Backend ....................... ██████████░░ ~85%
+Phase 4  Client ........................ █████░░░░░░░ ~40%
+Phase 5  Infrastructure ................ ░░░░░░░░░░░░ not started
+Phase 6  CI/CD & store release ......... ░░░░░░░░░░░░ not started
+```
 
----
+**Overall: roughly 45% of the way to something shippable.** The backend is the
+mature part. The client renders but cannot yet record a transaction, and nothing
+has been deployed to DigitalOcean.
 
-## 🗺️ Detailed Roadmap & Task Checklist
-
-### Phase 1: Architecture & Planning (COMPLETED)
-- [x] Create comprehensive production-ready offline-first architecture design → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [x] Define entity database schemas (users, categories, transactions, audit logs).
-- [x] Design sync-engine logic & Last-Write-Wins (LWW) conflict resolution.
-- [x] Formulate high-security boundaries (Argon2id, RTR, HTTPS/TLS, Rate limits).
-- [x] Adapt infrastructure to a single $6–$12 DigitalOcean droplet with Cloudflare.
-- [x] Create the `progress.md` tracking file.
-
-### Phase 2: Monorepo Scaffolding (COMPLETED)
-- [x] Initialize standard PNPM Workspace monorepo root structure.
-- [x] Configure `libs/shared-types` for shared DTOs and validation schemas.
-- [x] Set up `apps/server` (NestJS skeleton with TypeScript).
-- [x] Set up `apps/client` (Ionic React skeleton with Capacitor configuration).
-
-**Verification:** 63 tests passing (49 shared-types, 14 server), all three packages
-typecheck under full TypeScript strictness, server boots and serves `/v1/health`
-with security headers, client builds to 60.74 kB gzipped (budget: 200 kB).
-
-### Phase 3: Central Backend Development (IN PROGRESS)
-- [x] PostgreSQL schema, monthly partitioning, and indexes (`migrations/001_init.sql`).
-- [x] Row-Level Security with a release gate (`002_rls.sql`, `scripts/rls-gate.sh`).
-- [x] JWT authentication with Refresh Token Rotation and reuse detection.
-- [x] Deny-by-default `AuthGuard` with an explicit `@Public()` opt-out.
-- [x] Sync push/pull service: idempotency, conflict detection, clock-skew
-      correction, server-authoritative FX.
-- [x] Sync controller wired and verified end-to-end over HTTP.
-- [x] Identity resolution and account linking (verified-email only) + `PgSessionStore`.
-- [x] OIDC ID-token verification (Google, Apple) with full claim validation.
-- [x] Phone OTP with attempt limits, abuse limits and an SMS spend ceiling.
-- [x] Auth endpoints wired and verified over HTTP.
-- [ ] Optional TOTP enrolment; email/SMS delivery transports.
-- [x] PostgreSQL sync repository behind `Db.withUser`, so every query runs
-      inside the tenant's RLS transaction context (9 integration tests).
-
-- [x] Redis-backed OTP store with sliding-window limits and daily spend ceiling.
-- [ ] Redis: session denylist and BullMQ queues.
-- [x] Partitioned audit logging, append-only to the app role, wired to sync mutations.
-
-**Note:** auth no longer uses TypeORM or Argon2 — the passwordless federated
-design (ARCHITECTURE §9.1) removed password storage entirely, and repositories
-are plain interfaces so the persistence layer can be swapped without touching
-security-critical logic.
-
-### Phase 4: Local-First Frontend Development (PENDING)
-- [ ] Reorganize existing `index.html` prototype views into React page components.
-- [ ] Establish Zustand state management store.
-- [ ] Implement IndexedDB Local Storage adapter (Web target via Dexie).
-- [ ] Implement SQLite Local Storage adapter (Mobile targets via Capacitor SQLite).
-- [ ] Build the client-side background `SyncEngine` with network state listeners.
-- [ ] Integrate dark mode, responsive styling, and low-end device optimizations.
-
-### Phase 5: Single-Droplet Orchestration & Security (PENDING)
-- [ ] Write optimized Dockerfiles and `docker-compose.yml` for unified single-droplet hosting.
-- [ ] Configure Nginx reverse proxy with SSL, compression, and HTTP security headers.
-- [ ] Implement automated cron-job database backups to encrypted off-host locations.
-- [ ] Configure Cloudflare DNS, SSL Full Strict, WAF, Bot Protection, and Edge Cache.
-
-### Phase 6: CI/CD & Production Release (PENDING)
-- [ ] Configure GitHub Actions workflows for continuous build testing and zero-downtime deployment.
-- [ ] Execute rigorous security auditing (OWASP top-10 scans, SQLi/XSS validation).
-- [ ] Deploy live site under `api.domain.com` and publish web application client.
-- [ ] Compile Android (.apk/.aab) and iOS (.ipa) builds via Capacitor CLI.
+> An earlier version of this file said "80%". That counted the backend as the
+> whole project. It is not — the client is read-only and the infrastructure does
+> not exist.
 
 ---
 
-## 📓 Release Log & Milestones
+## Phase 1 — Architecture ✅
 
-### August 7, 2026
-- **Architecture Blueprint**: Designed a robust, production-ready, local-first architecture using Ionic + Capacitor, NestJS, PostgreSQL, Redis, and Cloudflare.
-- **Droplet Refactoring**: Redesigned deployment topology to pack all services onto a single, high-performance, cost-optimized droplet using containerized network isolation.
-- **Trackers Activated**: Created the `progress.md` tracking file to log the end-to-end development cycle.
-- **Branching**: Created and published the `development` branch as the integration target for Phase 2 onward.
-- **Architecture Document**: Wrote `docs/ARCHITECTURE.md` — the full 20-section blueprint covering folder structure, DB schema, API design, auth flow, sync protocol and conflict resolution, Docker/Nginx topology, Cloudflare configuration, CI/CD, monitoring, backup/recovery, cost estimates and the security checklist. Records four open decisions needing an answer before Phase 3 (currency scope, Open Banking, household sharing, data residency).
+- [x] [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — 20 sections: folder structure,
+      schema, API, auth flow, sync protocol, conflict resolution, Docker/Nginx,
+      Cloudflare, CI/CD, monitoring, backup, costs, security checklist
+- [x] Capacity model for 10k daily active users (§15.1)
+- [x] All seven open decisions resolved with the project owner (§20)
+
+---
+
+## Phase 2 — Monorepo ✅
+
+- [x] pnpm workspace, TypeScript strict everywhere
+- [x] `libs/shared-types` — dual CJS/ESM, imported by both ends
+- [x] `apps/server` — NestJS
+- [x] `apps/client` — Ionic/Capacitor + React + Vite
+
+---
+
+## Phase 3 — Backend (~85%)
+
+**Done**
+
+- [x] Schema, monthly partitioning, indexes — `001_init.sql`
+- [x] Row-Level Security + `spendwise_app` role — `002_rls.sql`
+- [x] Pre-auth lookup functions — `003_auth_lookups.sql`
+- [x] **RLS release gate** — `scripts/rls-gate.sh`, 10 cross-tenant checks
+- [x] JWT access tokens + refresh rotation with **reuse detection**
+- [x] Deny-by-default `AuthGuard` with explicit `@Public()` opt-out
+- [x] Identity resolution and account linking (verified email only)
+- [x] OIDC ID-token verification — Google and Apple, full claim validation
+- [x] Phone OTP — attempt limits, abuse limits, SMS spend ceiling
+- [x] Sync push/pull — idempotency, conflicts, clock skew, server-authoritative FX
+- [x] PostgreSQL repositories wired into the running server
+- [x] Redis-backed OTP store — sliding windows, survives restart
+- [x] Append-only audit logging
+
+**Left**
+
+- [ ] Email magic-link and SMS **delivery transports** (logic is done and tested;
+      needs an SES/Twilio adapter and credentials)
+- [ ] Optional TOTP enrolment
+- [ ] Redis session denylist for immediate access-token revocation
+- [ ] BullMQ queues
+- [ ] Audit logging on auth events (currently only on sync mutations)
+- [ ] Per-user envelope encryption — `dek_wrapped` exists and is populated with a
+      placeholder; the KEK wrapping is not implemented
+- [ ] Live OIDC round trip against real Google/Apple credentials
+      *(verified only against an injected JWKS so far)*
+
+---
+
+## Phase 4 — Client (~40%)
+
+**Done**
+
+- [x] `StorageAdapter` interface + `MemoryAdapter`
+- [x] Zustand store as a cache over the adapter
+- [x] Client sync engine — push-before-pull, batching, jittered backoff
+- [x] Pure selectors — the prototype's `derive()`, now tested
+- [x] Design system — tokens, 32 icons, gauge with cap compensation
+- [x] Five screens rendering real derived data
+- [x] Demo seed so the app is never blank
+
+**Left — and this is the honest gap**
+
+- [ ] **Add / edit transaction sheet.** The store actions exist and are wired,
+      but no UI reaches them. **The app is currently read-only.**
+- [ ] Category and bank editors
+- [ ] `SyncTransport` HTTP implementation — the engine cannot reach the API
+- [ ] Dexie adapter — web data does not survive a refresh
+- [ ] Capacitor SQLite adapter — native
+- [ ] Connectivity detection (Capacitor Network / `navigator.onLine`)
+- [ ] Auth screens and token storage
+- [ ] Onboarding: welcome, setup wizard, coach marks (§3.5)
+- [ ] Light theme is defined in tokens but has no toggle
+
+---
+
+## Phase 5 — Infrastructure ⬜ not started
+
+- [ ] Dockerfiles and `docker-compose.yml`
+- [ ] Nginx reverse proxy, TLS, blue/green
+- [ ] DigitalOcean droplet (LON1)
+- [ ] Cloudflare DNS, Full Strict, WAF, firewall restricted to Cloudflare IPs
+- [ ] Encrypted backups to Spaces + a rehearsed restore
+
+---
+
+## Phase 6 — CI/CD & release ⬜ not started
+
+- [ ] GitHub Actions: lint, test, scan, build, deploy
+- [ ] Zero-downtime deploy + rollback
+- [ ] Monitoring: Loki, Prometheus, Sentry, UptimeRobot
+- [ ] Capacitor Android/iOS builds and store submission
+- [ ] Security audit against the §18 checklist
+
+---
+
+## Known issues
+
+| # | Issue | Impact |
+|---|---|---|
+| 1 | **Pages Actions workflow is dormant** — `total_count: 0`, not firing on push | Live site is published by the legacy branch builder instead. Needs repo-settings access; likely Pages source is still "Deploy from a branch" |
+| 2 | **App icons are the old teal wallet** | Off-brand against the indigo/cyan UI. A new logo was supplied but it is a horizontal lockup with text — unusable as an icon without extracting the mark |
+| 3 | **Logo palette conflicts with the app** | Logo is pink on dark purple; UI is indigo/cyan/violet. One of them has to move |
+| 4 | **Client cannot record a transaction** | Read-only until the add sheet exists |
+| 5 | **No persistence on web** | `MemoryAdapter` is in use; Dexie not wired |
+
+---
+
+## Decisions log
+
+| Date | Decision |
+|---|---|
+| 7 Aug 2026 | Multi-currency from v1 |
+| 7 Aug 2026 | No Open Banking — stays outside FCA regulation |
+| 7 Aug 2026 | Passwordless auth only: Google, Apple, phone OTP, email magic link |
+| 7 Aug 2026 | Per-user RLS **and** envelope encryption |
+| 7 Aug 2026 | UK / LON1; UK GDPR obligations documented |
+| 7 Aug 2026 | Zustand for state |
+| 7 Aug 2026 | Prototype stays in-memory; persistence arrives with the native build |
+| 7 Aug 2026 | Launch on 4 vCPU / 8GB, scale the droplet vertically as users grow |
+
+**Still open:** household/shared budgets, App Store business model, push notifications.
+
+---
+
+## Notable corrections
+
+Kept deliberately — a wrong belief left in place costs more than the admission.
+
+- **`ARCHITECTURE.md` §9.2** claimed `USING` without `WITH CHECK` allows forging
+  rows for another user. False: Postgres reuses `USING` as the write check.
+  Verified against PG16 and corrected in place.
+- **Argon2id was specified, then removed entirely.** Passwordless auth deleted
+  the memory-exhaustion DoS that had required a semaphore to contain it.
+- **Two test suites were passing without testing anything** — one skipped every
+  case while reporting success, one exercised a control that was not the control
+  it claimed. Both found by deliberately breaking the implementation.
+- **The cost estimate moved from $6–12/mo to ~$78/mo** once SMS, snapshots,
+  Spaces and ICO registration were counted honestly.

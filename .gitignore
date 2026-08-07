@@ -27,3 +27,7 @@ apps/client/ios/
 # editors / OS
 .idea/
 *.swp
+
+# stray screenshots and images dropped into the repo root
+/*.png
+!prototype/*.png

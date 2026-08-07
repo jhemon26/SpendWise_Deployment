@@ -5,7 +5,7 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 **Last updated:** 7 August 2026
 **Branch:** `development`
 **Tests:** 232 passing — 49 shared-types, 114 server, 69 client
-**Build:** all three packages typecheck under full strictness; client 69.46 kB gzipped
+**Build:** all three packages typecheck under full strictness; client 106 kB gzipped
 
 ---
 
@@ -26,8 +26,8 @@ locally, but it cannot talk to the API yet and nothing has been deployed to
 DigitalOcean.
 
 > An earlier version of this file said "80%". That counted the backend as the
-> whole project. It is not — the client is read-only and the infrastructure does
-> not exist.
+> whole project. It is not — the infrastructure does not exist at all, and the
+> client still cannot reach the API.
 
 ---
 
@@ -83,7 +83,7 @@ DigitalOcean.
 
 ---
 
-## Phase 4 — Client (~40%)
+## Phase 4 — Client (~55%)
 
 **Done**
 
@@ -95,13 +95,15 @@ DigitalOcean.
 - [x] Five screens rendering real derived data
 - [x] Demo seed so the app is never blank
 
-**Left — and this is the honest gap**
+**Recently done**
 
 - [x] **Add / edit transaction sheet** — FAB to add, tap a row to edit, delete,
       with the live impact preview
 - [x] **Dexie/IndexedDB adapter**, behind a shared contract suite run against
       *both* adapters, plus a timeout-and-degrade opener so unavailable storage
       can never hang the app
+**Left**
+
 - [ ] Category and bank editors
 - [ ] `SyncTransport` HTTP implementation — the engine cannot reach the API
 - [ ] **Verify Dexie against a real browser.** It passes 29 contract tests under

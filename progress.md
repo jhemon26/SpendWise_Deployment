@@ -9,7 +9,7 @@ This document tracks the live implementation status, completed achievements, cur
 - **Current Phase**: Phase 3 — Central Backend Development (Phases 1–2 complete)
 - **Architecture Type**: Local-First / Sync-Enabled (Offline-First)
 - **Deployment Model**: Cost-Optimized Single-Droplet ($6–$12/mo) + Cloudflare
-- **Overall Progress**: 70% (Architecture done; monorepo, database, auth tokens and sync engine built and tested)
+- **Overall Progress**: 80% (Architecture done; monorepo, database, auth tokens and sync engine built and tested)
 
 ---
 
@@ -51,12 +51,13 @@ with security headers, client builds to 60.74 kB gzipped (budget: 200 kB).
 - [x] OIDC ID-token verification (Google, Apple) with full claim validation.
 - [x] Phone OTP with attempt limits, abuse limits and an SMS spend ceiling.
 - [x] Auth endpoints wired and verified over HTTP.
-- [ ] Optional TOTP enrolment; email magic-link delivery.
+- [ ] Optional TOTP enrolment; email/SMS delivery transports.
 - [x] PostgreSQL sync repository behind `Db.withUser`, so every query runs
       inside the tenant's RLS transaction context (9 integration tests).
 
-- [ ] Redis: rate limiting, session denylist, BullMQ queues.
-- [ ] Partitioned audit logging wired to mutations.
+- [x] Redis-backed OTP store with sliding-window limits and daily spend ceiling.
+- [ ] Redis: session denylist and BullMQ queues.
+- [x] Partitioned audit logging, append-only to the app role, wired to sync mutations.
 
 **Note:** auth no longer uses TypeORM or Argon2 — the passwordless federated
 design (ARCHITECTURE §9.1) removed password storage entirely, and repositories

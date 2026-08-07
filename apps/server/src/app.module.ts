@@ -1,33 +1,69 @@
 import { Module, Logger } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { generateKeyPairSync } from 'node:crypto';
+import Redis from 'ioredis';
+
 import { HealthController } from './health/health.controller.js';
 import { SyncController } from './sync/sync.controller.js';
-import { SyncService } from './sync/sync.service.js';
-import { InMemorySyncRepo } from './sync/sync.repo.js';
-import { TokenService } from './auth/token.service.js';
-import { InMemorySessionStore } from './auth/session.store.js';
-import { AuthGuard } from './auth/auth.guard.js';
 import { AuthController } from './auth/auth.controller.js';
-import { IdentityService } from './auth/identity.service.js';
-import { OidcVerifier, GOOGLE, APPLE } from './auth/oidc.verifier.js';
-import { OtpService, InMemoryOtpStore } from './auth/otp.service.js';
+
 import { Db } from './db/db.js';
+import { AuditService } from './audit/audit.service.js';
+import { TokenService } from './auth/token.service.js';
+import { PgSessionStore } from './auth/session.store.pg.js';
+import { InMemorySessionStore } from './auth/session.store.js';
+import { IdentityService } from './auth/identity.service.js';
+import { AuthGuard } from './auth/auth.guard.js';
+import { OidcVerifier, GOOGLE, APPLE } from './auth/oidc.verifier.js';
+import { OtpService, InMemoryOtpStore, type OtpStore } from './auth/otp.service.js';
+import { RedisOtpStore } from './auth/otp.store.redis.js';
 import { loadEnv } from './config/env.js';
+
+export const REDIS = Symbol('REDIS');
 
 /**
  * Root module.
  *
- * Stores are still in-memory: Postgres and Redis wiring is the next task, and
- * the interfaces (SessionStore, SyncRepo) exist precisely so swapping them is
- * a provider change rather than a rewrite of the security-critical logic.
+ * Production wiring is PostgreSQL + Redis. The in-memory implementations remain
+ * only as a development fallback when no DATABASE_URL / REDIS_URL is set, and
+ * the env schema makes both mandatory under NODE_ENV=production, so the
+ * fallback cannot reach users.
  */
 @Module({
   controllers: [HealthController, SyncController, AuthController],
   providers: [
     {
+      provide: Db,
+      useFactory: (): Db => {
+        const env = loadEnv();
+        const url =
+          env.DATABASE_URL ??
+          'postgres://spendwise_app:change-me-in-production@127.0.0.1:5432/spendwise';
+        if (!env.DATABASE_URL) {
+          new Logger('Db').warn('DATABASE_URL unset — using the local development default');
+        }
+        return new Db({ connectionString: url });
+      },
+    },
+
+    {
+      provide: REDIS,
+      useFactory: (): Redis | null => {
+        const env = loadEnv();
+        if (!env.REDIS_URL) {
+          new Logger('Redis').warn('REDIS_URL unset — OTP limits will be in-process only');
+          return null;
+        }
+        return new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
+      },
+    },
+
+    { provide: AuditService, useFactory: (db: Db) => new AuditService(db), inject: [Db] },
+    { provide: IdentityService, useFactory: (db: Db) => new IdentityService(db), inject: [Db] },
+
+    {
       provide: TokenService,
-      useFactory: (): TokenService => {
+      useFactory: (db: Db): TokenService => {
         const env = loadEnv();
         let priv = env.JWT_PRIVATE_KEY;
         let pub = env.JWT_PUBLIC_KEY;
@@ -44,25 +80,17 @@ import { loadEnv } from './config/env.js';
           );
         }
 
-        return new TokenService(new InMemorySessionStore(), priv, pub, {
+        // Sessions live in Postgres under RLS; only the refresh-token lookup
+        // uses the audited bypass from migration 003.
+        const store = env.DATABASE_URL ? new PgSessionStore(db) : new InMemorySessionStore();
+        return new TokenService(store, priv, pub, {
           accessTtlSeconds: 15 * 60,
           refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
         });
       },
+      inject: [Db],
     },
-    {
-      provide: SyncService,
-      useFactory: (): SyncService => new SyncService(new InMemorySyncRepo()),
-    },
-    {
-      provide: Db,
-      useFactory: (): Db => {
-        const env = loadEnv();
-        const url = env.DATABASE_URL ?? 'postgres://spendwise_app@127.0.0.1:5432/spendwise';
-        return new Db({ connectionString: url });
-      },
-    },
-    { provide: IdentityService, useFactory: (db: Db) => new IdentityService(db), inject: [Db] },
+
     {
       provide: OidcVerifier,
       useFactory: (): OidcVerifier =>
@@ -71,14 +99,19 @@ import { loadEnv } from './config/env.js';
           apple: { ...APPLE, audience: process.env['APPLE_CLIENT_ID'] ?? 'app.spendwise.mobile' },
         }),
     },
+
     {
       provide: OtpService,
-      useFactory: (): OtpService =>
-        new OtpService(new InMemoryOtpStore(), {
-          // Premium-rate ranges commonly abused for SMS pumping (ARCHITECTURE 9.1).
+      useFactory: (redis: Redis | null): OtpService => {
+        const store: OtpStore = redis ? new RedisOtpStore(redis) : new InMemoryOtpStore();
+        return new OtpService(store, {
+          // Premium-rate ranges commonly abused for SMS pumping (§9.1).
           blockedPrefixes: ['+8811', '+8812', '+8813', '+239', '+676', '+675'],
-        }),
+        });
+      },
+      inject: [REDIS],
     },
+
     // Deny by default: every route needs a valid bearer token unless it opts out.
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

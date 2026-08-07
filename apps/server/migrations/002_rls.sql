@@ -120,6 +120,10 @@ CREATE POLICY tenant_isolation ON user_roles
 -- audit_logs is append-only and read by operators, not by users; it is never
 -- exposed through a user-facing endpoint.
 GRANT SELECT ON fx_rates, roles, permissions, role_permissions TO spendwise_app;
+-- Append-only for the application: it may write history and read it back for
+-- incident response, but must not be able to rewrite or erase it.
 REVOKE UPDATE, DELETE ON audit_logs FROM spendwise_app;
+GRANT INSERT, SELECT ON audit_logs TO spendwise_app;
+GRANT USAGE, SELECT ON SEQUENCE audit_logs_id_seq TO spendwise_app;
 
 COMMIT;

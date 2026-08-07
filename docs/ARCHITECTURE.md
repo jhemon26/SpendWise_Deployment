@@ -3,6 +3,7 @@
 **Status:** Phase 1 design, approved for build
 **Date:** 7 August 2026
 **Constraint:** One DigitalOcean droplet + Cloudflare. Budget-first.
+**Scale target:** **10,000+ daily active users** (see §15.1 for the worked capacity model)
 **Priority order:** Security → Performance → Usability → Developer experience
 
 ---
@@ -22,7 +23,12 @@ Every requirement in the brief is met below except the ones that are *physically
 
 **The one risk you are accepting:** if the droplet dies, SpendWise is down until you restore a snapshot. This is survivable *specifically because* the app is offline-first — clients keep working from local SQLite/IndexedDB and sync when the API returns. Offline-first is not just a feature here; it is the availability strategy that makes a single droplet defensible.
 
-**When to stop accepting it:** at roughly 25k active users, or the first time revenue depends on uptime. §15 gives the exact migration path.
+**At 10,000 daily active users that risk has real weight.** Ten thousand people feel a 30-minute recovery. Two consequences, both costed in §17:
+
+- **Add Managed Postgres (+$15/mo) sooner rather than later.** It removes the worst outcome — losing the database to a stale snapshot — and brings failover and point-in-time recovery. This is the single highest-value line item in the budget.
+- **Throughput is genuinely not the problem.** The worked model in §15.1 puts you at ~1.4 req/s average and ~27 req/s peak, roughly 10× under what one droplet serves. What actually bites at this scale is **Argon2 memory during login storms** (§9.1) and **synchronised sync ticks** (§6.3). Both are solved in this document; neither is obvious, and both are outages if missed.
+
+**When to stop accepting the single host entirely:** ~30k DAU, or the first time revenue depends on uptime. §15.2 gives the migration path.
 
 ---
 
@@ -406,6 +412,8 @@ Every index is **partial on `deleted_at IS NULL`**. Tombstones are dead weight f
 
 The payoff is operational, not just query speed: dropping an expired audit partition is `DROP TABLE` (instant, no bloat) versus a `DELETE` that would generate millions of dead tuples and send autovacuum into a spiral on a small droplet. `pg_partman` creates next month's partition automatically.
 
+**Retention at 10k DAU.** The audit table grows ~7 GB/year — faster than the transaction data it describes. Drop audit partitions older than **12 months** (retain longer only if a compliance obligation requires it, and archive to Spaces if so). Transaction partitions are never dropped; they are user data. This single retention rule roughly halves total disk growth (§15.1).
+
 ### 5.4 Tuning for a 2GB droplet
 
 ```
@@ -470,6 +478,8 @@ Pull is cursor-paginated at 500 records. A user returning after a long offline p
 **Push before pull, always.** Pulling first would let a server record overwrite a local edit that has not yet been transmitted — silent data loss, and the hardest class of bug to reproduce.
 
 Connectivity uses Capacitor Network on native and `navigator.onLine` + a cheap `HEAD /health` probe on web. `navigator.onLine` alone is famously unreliable: it reports `true` on captive-portal WiFi.
+
+**The 60s tick must be jittered.** At 10k DAU a fixed interval synchronises clients into a herd: everyone who opened the app at 08:30 syncs together at 08:31, 08:32, and so on. Measured, a synchronised tick concentrates ~11 req/s into repeating spikes rather than spreading them. Use `60s ± rand(0,30s)`, and — more importantly — **do not tick at all while the app is idle and nothing is pending**. Sync is event-driven (local write, regained connectivity, app resume); the timer is only a safety net. The same jitter rule applies to reconnect-after-outage, where the herd is at its worst.
 
 ### 6.4 Conflict resolution
 
@@ -545,7 +555,23 @@ Security is the top priority, so this section is the specification, not a summar
 
 ### 9.1 Authentication
 
-- **Argon2id**, `m=64MB, t=3, p=4`. Chosen over bcrypt for GPU/ASIC resistance via memory-hardness. Tuned so a single hash costs ~250ms on this droplet — expensive for an attacker, imperceptible to a user.
+- **Argon2id**, `m=32MiB, t=3, p=1`, **behind a hard concurrency semaphore of 8**. See the box below — the parameters and the semaphore are equally load-bearing.
+
+> #### ⚠️ Argon2 memory is a DoS vector at 10k DAU — sized deliberately
+>
+> Memory-hardness is the point of Argon2, but the cost is paid by *your server*, per concurrent hash. The obvious "strong" setting is a self-inflicted outage:
+>
+> | Concurrent logins | at `m=64MiB` (rejected) | at `m=32MiB` + semaphore 8 (chosen) |
+> |---|---|---|
+> | 10 | 0.62 GB | 0.25 GB |
+> | 50 | 3.12 GB — **OOM on a 4GB droplet** | 0.25 GB (42 queued) |
+> | 100 | 6.25 GB — **instant death** | 0.25 GB (92 queued) |
+>
+> At 10k DAU a login storm is routine, not exotic: an app update, a forced logout, credential stuffing — or the 90-day JWT key rotation specified in this very document. Unbounded, each one is an outage.
+>
+> **The fix is the semaphore, not just smaller parameters.** Password verification runs through a queue capped at 8 in flight; overflow waits, and sheds with `503 Retry-After` past a 2s wait. Memory is then bounded at **8 × 32MiB = 256MB regardless of load**. `m=32MiB, t=3, p=1` still exceeds the OWASP floor (`m=19MiB, t=2, p=1`), so this costs security nothing.
+>
+> Benchmark on the real droplet before launch and tune `t` until a hash costs ~250ms. Never tune by raising `m` without re-checking the table above.
 - **Access token:** JWT, **15 min**, RS256, `sub`/`jti`/`roles`/`perms`. Short-lived because a stateless JWT cannot be revoked mid-life; the expiry *is* the revocation window.
 - **Refresh token:** opaque 256-bit random, **30 days**, SHA-256 hashed at rest. Not a JWT — it must be revocable, and only a DB lookup gives that.
 - **Refresh-token rotation with reuse detection.** Each refresh issues a new token and retires the old one. If a *retired* token is presented, the entire `family_id` is revoked and the user is alerted — this is the signature of a stolen token being replayed, and it is the single highest-value auth control here.
@@ -731,9 +757,50 @@ That last one matters more than it looks: **a backup you are not alerted about i
 
 ## 15. Scalability path
 
-**Today → 10k users.** One 2vCPU/4GB droplet. Expect roughly 20–40 req/s at peak — well within budget, because offline-first means clients sync in bursts rather than chatting continuously. This is the decisive architectural advantage: request volume scales with *sync events*, not with screen views.
+### 15.1 Capacity model at 10,000 daily active users
 
-**10k → 30k.** Resize the droplet (vertical, ~5 min downtime). Add Redis caching for aggregates. Tune Postgres. No architecture change.
+The target is **10k DAU**, not 10k registered. Worked from assumptions you can challenge:
+
+| Input | Assumption |
+|---|---|
+| Sessions per user per day | 3 |
+| API requests per session | 4 (token refresh, sync push, 1–2 pull pages) |
+| Transactions created per user per day | 5 |
+| Share of daily traffic in the peak hour | 20% (commute-shaped) |
+
+| Derived | Value |
+|---|---|
+| Requests/day | 120,000 |
+| **Average** | **1.4 req/s** |
+| **Peak hour** | **6.7 req/s** |
+| **Peak-minute burst (4×)** | **~27 req/s** |
+| Transactions/day | 50,000 |
+| Disk growth | **13.4 GB/year** (6.4 data+indexes, 7.0 audit) |
+
+**27 req/s is not a hard problem** — a single NestJS process handles that with CPU to spare. This is the offline-first design paying off exactly as intended: **request volume scales with sync events, not with screen views.** A user who opens SpendWise fifteen times to check a balance generates zero requests. That property is what makes 10k DAU on one droplet defensible where a conventional server-rendered app would already need three.
+
+**What actually constrains you at this scale, in order:**
+
+1. **Argon2 memory during login storms** — the real ceiling. Solved by the semaphore in §9.1. Unsolved, it is the thing that takes you down.
+2. **Thundering-herd sync** — solved by jitter in §6.3.
+3. **Backup and autovacuum competing with live traffic** — schedule `pg_dump` at 03:00 local, tune autovacuum to be more aggressive but smaller-batched so it never blocks the peak.
+4. **Disk** — 13.4 GB/yr means the 80GB volume lasts ~4 years at 60% usable. Audit partitions older than **12 months** are dropped, which roughly halves the growth rate.
+5. **Raw request throughput** — comfortably last, at roughly 10× headroom.
+
+**Droplet sizing at 10k DAU:**
+
+| Option | Cost | Verdict |
+|---|---|---|
+| 2 vCPU / 4GB | $24 | Adequate for throughput **only with the Argon2 semaphore in place**. Tight during a blue-green deploy (two API containers) overlapping a backup. |
+| **4 vCPU / 8GB** | **$48** | **Recommended.** Headroom for login bursts, deploys, and vacuum without competing with live traffic. |
+
+At 10k DAU an outage affects ten thousand people, which changes the calculus: I'd rather spend the extra $24/mo than debug an OOM at 3am. If budget is immovable, the $24 droplet is genuinely workable — but then the Argon2 semaphore is not optional, it is the thing keeping you up.
+
+### 15.2 Beyond 10k
+
+**10k → 30k DAU.** Resize the droplet (vertical, ~5 min downtime). Add Redis caching for aggregates. Tune Postgres. No architecture change.
+
+**Escalated recommendation at this scale:** move Postgres to DigitalOcean Managed Postgres (+$15/mo) *earlier than originally planned* — ideally before you cross 10k DAU rather than at 30k. It buys automated failover, point-in-time recovery, and removes the single worst failure mode (losing the database with a stale snapshot). At 10k daily users, $15/mo against that risk is cheap insurance, and it is the first thing I would add to the budget.
 
 **30k → 100k+.** The single-droplet model ends here, and the code is already written for it:
 1. Move Postgres to DigitalOcean Managed Postgres (+$15/mo) — brings automated failover, PITR, and a read replica.
@@ -763,19 +830,24 @@ Backups are encrypted **before** upload — Spaces credentials leaking must not 
 
 ## 17. Cost estimate (USD/month)
 
+Sized for **10,000 daily active users** (§15.1).
+
 | Item | Spec | Cost |
 |---|---|---|
-| Droplet | 2 vCPU / 4GB / 80GB SSD | $24 |
-| Snapshots | 20% of droplet | $4.80 |
+| Droplet | **4 vCPU / 8GB / 160GB SSD** | $48 |
+| Snapshots | 20% of droplet | $9.60 |
 | Spaces | 250GB + 1TB transfer | $5 |
 | Cloudflare | Free tier | $0 |
 | Domain | amortised | ~$1 |
 | Sentry / UptimeRobot / Grafana | free tiers | $0 |
-| **Total** | | **≈ $35/mo** |
+| **Recommended total** | | **≈ $64/mo** |
+| *+ Managed Postgres* | *strongly advised at this scale (§15.2)* | *+$15* |
 
-**Leaner start — $15/mo:** 1 vCPU/2GB droplet ($12) + Spaces ($5), no snapshots. Viable to about 2k users, but Postgres and two API containers on 2GB is genuinely tight during deploys. **I recommend the $24 droplet**; the extra $12 buys the headroom that prevents your first 3am OOM.
+**Budget option — $34/mo:** 2 vCPU/4GB droplet ($24) + snapshots ($4.80) + Spaces ($5). Handles 10k DAU on throughput, but **only with the Argon2 semaphore from §9.1**, and with no slack when a deploy overlaps a backup.
 
-**At 100k users:** ~$110/mo (3 API droplets + managed Postgres + load balancer).
+**Do not run 10k DAU on 1 vCPU/2GB.** Postgres, Redis and two API containers do not fit, and Argon2 has nowhere to live.
+
+**At 100k DAU:** ~$150/mo — 3 API droplets, managed Postgres with a read replica, load balancer.
 
 ---
 

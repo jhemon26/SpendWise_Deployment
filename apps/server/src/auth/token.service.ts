@@ -154,7 +154,7 @@ export class TokenService {
     }
 
     if (session.revoked_at !== null) {
-      const revoked = await this.store.revokeFamily(session.family_id, this.now());
+      const revoked = await this.store.revokeFamily(session.family_id, this.now(), session.user_id);
       throw new TokenError(
         `Refresh token reuse detected; revoked ${revoked} session(s) in family ${session.family_id}`,
         'reuse_detected',
@@ -163,15 +163,15 @@ export class TokenService {
 
     if (session.expires_at.getTime() <= this.now().getTime()) {
       // Retire it so a later replay is treated as expired, not as reuse.
-      await this.store.revokeIfActive(session.id, this.now());
+      await this.store.revokeIfActive(session.id, this.now(), session.user_id);
       throw new TokenError('Refresh token expired', 'expired_refresh');
     }
 
     // Compare-and-set. Two concurrent refreshes both reach here; only one wins,
     // and the loser must not be handed a valid pair.
-    const won = await this.store.revokeIfActive(session.id, this.now());
+    const won = await this.store.revokeIfActive(session.id, this.now(), session.user_id);
     if (!won) {
-      await this.store.revokeFamily(session.family_id, this.now());
+      await this.store.revokeFamily(session.family_id, this.now(), session.user_id);
       throw new TokenError('Concurrent refresh of the same token', 'reuse_detected');
     }
 
@@ -179,8 +179,8 @@ export class TokenService {
   }
 
   /** Explicit sign-out: kill the whole lineage, not just the current token. */
-  async revokeFamily(familyId: string): Promise<number> {
-    return this.store.revokeFamily(familyId, this.now());
+  async revokeFamily(familyId: string, userId: string): Promise<number> {
+    return this.store.revokeFamily(familyId, this.now(), userId);
   }
 
   async verifyAccess(token: string): Promise<AccessClaims> {

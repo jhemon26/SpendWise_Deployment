@@ -25,6 +25,7 @@ sup -d postgres -q -c "CREATE DATABASE $DB;"
 echo "▸ applying migrations"
 sup -d "$DB" -q -f "$HERE/migrations/001_init.sql"
 sup -d "$DB" -q -f "$HERE/migrations/002_rls.sql"
+sup -d "$DB" -q -f "$HERE/migrations/003_auth_lookups.sql"
 
 echo "▸ seeding two tenants"
 sup -d "$DB" -q <<'SQL'

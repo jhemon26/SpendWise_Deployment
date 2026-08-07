@@ -38,11 +38,15 @@ export interface SessionStore {
    * the concurrency control: two simultaneous refreshes with the same token
    * both find an active session, but only one wins the compare-and-set. The
    * loser must be treated as a replay, not silently allowed through.
+   *
+   * `user_id` is required because the Postgres implementation performs this
+   * write under RLS, which cannot be satisfied without knowing the tenant.
+   * Every caller already holds the session, so it is always available.
    */
-  revokeIfActive(id: string, at: Date): Promise<boolean>;
+  revokeIfActive(id: string, at: Date, user_id: string): Promise<boolean>;
 
   /** Revoke every session in a lineage. Returns how many were still active. */
-  revokeFamily(family_id: string, at: Date): Promise<number>;
+  revokeFamily(family_id: string, at: Date, user_id: string): Promise<number>;
 
   countActive(user_id: string): Promise<number>;
 }
@@ -72,14 +76,14 @@ export class InMemorySessionStore implements SessionStore {
     return null;
   }
 
-  async revokeIfActive(id: string, at: Date): Promise<boolean> {
+  async revokeIfActive(id: string, at: Date, _user_id?: string): Promise<boolean> {
     const r = this.rows.get(id);
     if (!r || r.revoked_at !== null) return false;
     r.revoked_at = at;
     return true;
   }
 
-  async revokeFamily(family_id: string, at: Date): Promise<number> {
+  async revokeFamily(family_id: string, at: Date, _user_id?: string): Promise<number> {
     let n = 0;
     for (const r of this.rows.values()) {
       if (r.family_id === family_id && r.revoked_at === null) {

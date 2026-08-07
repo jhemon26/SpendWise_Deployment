@@ -9,7 +9,7 @@ This document tracks the live implementation status, completed achievements, cur
 - **Current Phase**: Phase 3 — Central Backend Development (Phases 1–2 complete)
 - **Architecture Type**: Local-First / Sync-Enabled (Offline-First)
 - **Deployment Model**: Cost-Optimized Single-Droplet ($6–$12/mo) + Cloudflare
-- **Overall Progress**: 50% (Architecture done; monorepo, database, auth tokens and sync engine built and tested)
+- **Overall Progress**: 58% (Architecture done; monorepo, database, auth tokens and sync engine built and tested)
 
 ---
 
@@ -47,11 +47,12 @@ with security headers, client builds to 60.74 kB gzipped (budget: 200 kB).
 - [x] Sync push/pull service: idempotency, conflict detection, clock-skew
       correction, server-authoritative FX.
 - [x] Sync controller wired and verified end-to-end over HTTP.
-- [ ] OIDC providers (Google, Apple), phone OTP, email magic link, identity linking.
+- [x] Identity resolution and account linking (verified-email only) + `PgSessionStore`.
+- [ ] OIDC token verification (Google, Apple), phone OTP, email magic link endpoints.
 - [ ] Optional TOTP enrolment.
 - [x] PostgreSQL sync repository behind `Db.withUser`, so every query runs
       inside the tenant's RLS transaction context (9 integration tests).
-- [ ] PostgreSQL session store (auth still in-memory).
+
 - [ ] Redis: rate limiting, session denylist, BullMQ queues.
 - [ ] Partitioned audit logging wired to mutations.
 

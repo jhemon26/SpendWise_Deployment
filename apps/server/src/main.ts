@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { VersioningType, Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import { json } from 'express';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
 import { loadEnv } from './config/env.js';
 
@@ -15,6 +16,9 @@ async function bootstrap(): Promise<void> {
 
   /* Security headers (§9.5). Nginx sets these too; belt and braces, because a
      direct-to-origin request that bypasses the proxy still gets them. */
+  // Refresh tokens arrive as HttpOnly cookies from browser clients (§9.1).
+  app.use(cookieParser());
+
   app.use(
     helmet({
       contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], objectSrc: ["'none'"] } },

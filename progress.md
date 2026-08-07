@@ -4,7 +4,7 @@ New here? Read [`START-READING-HERE.md`](START-READING-HERE.md) first.
 
 **Last updated:** 7 August 2026
 **Branch:** `development`
-**Tests:** 253 passing — 49 shared-types, 114 server, 90 client
+**Tests:** 260 passing — 49 shared-types, 121 server, 90 client
 **Build:** all three packages typecheck under full strictness; client 106 kB gzipped
 
 ---
@@ -66,6 +66,9 @@ screens, so nothing signs in yet, and nothing has been deployed to DigitalOcean.
 - [x] PostgreSQL repositories wired into the running server
 - [x] Redis-backed OTP store — sliding windows, survives restart
 - [x] Append-only audit logging
+- [x] **HttpOnly refresh cookie** for browsers — SameSite=Strict, scoped to
+      `/v1/auth`; the token is withheld from the response body unless the client
+      declares itself native
 
 **Left**
 

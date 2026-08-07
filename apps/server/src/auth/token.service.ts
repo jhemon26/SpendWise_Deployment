@@ -178,6 +178,17 @@ export class TokenService {
     return this.mint(session.user_id, session.device_id, session.family_id, roles);
   }
 
+  /**
+   * Look up the session a refresh token belongs to, without rotating it.
+   *
+   * Used by logout, which needs the family id to revoke the whole lineage.
+   * Deliberately does NOT consume the token — logout must not look like reuse.
+   */
+  async sessionFor(presented: string): Promise<{ family_id: string; user_id: string } | null> {
+    const s = await this.store.findByHash(hashRefreshToken(presented));
+    return s ? { family_id: s.family_id, user_id: s.user_id } : null;
+  }
+
   /** Explicit sign-out: kill the whole lineage, not just the current token. */
   async revokeFamily(familyId: string, userId: string): Promise<number> {
     return this.store.revokeFamily(familyId, this.now(), userId);

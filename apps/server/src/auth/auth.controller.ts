@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post, Req, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import type { Response } from 'express';
 import { z } from 'zod';
+import { setRefreshCookie, clearRefreshCookie, readRefreshToken } from './refresh-cookie.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { Public } from '../common/public.decorator.js';
 import type { AuthedRequest } from './auth.guard.js';
@@ -25,7 +27,9 @@ const otpVerifySchema = z.object({
   device_id: z.string().min(1).max(128).optional(),
 });
 
-const refreshSchema = z.object({ refresh_token: z.string().min(1) });
+// Optional: browsers send the token in an HttpOnly cookie instead, and must
+// not be able to read it in order to echo it back.
+const refreshSchema = z.object({ refresh_token: z.string().min(1).optional() });
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
@@ -36,10 +40,47 @@ export class AuthController {
     private readonly tokens: TokenService,
   ) {}
 
+  private get cookieOpts(): { secure: boolean; maxAgeDays: number } {
+    return { secure: process.env['NODE_ENV'] === 'production', maxAgeDays: 30 };
+  }
+
+  /**
+   * Issue the pair.
+   *
+   * Browsers get the refresh token ONLY as an HttpOnly cookie. Returning it in
+   * the body as well would hand the long-lived credential straight back to
+   * JavaScript and undo the entire reason for HttpOnly — injected script could
+   * simply read the sign-in response.
+   *
+   * Native clients have Keychain/Keystore and no cookie jar, so they declare
+   * themselves with `X-Client-Platform: native` and receive it in the body.
+   * Defaulting to the SAFE case means a client that forgets the header gets
+   * the stricter treatment, not the weaker one.
+   */
+  private respondWithTokens(
+    req: AuthedRequest,
+    res: Response,
+    pair: { access_token: string; refresh_token: string; expires_in: number; family_id: string },
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    setRefreshCookie(res, pair.refresh_token, this.cookieOpts);
+    const isNative = String(req.headers['x-client-platform'] ?? '').toLowerCase() === 'native';
+    return {
+      access_token: pair.access_token,
+      ...(isNative ? { refresh_token: pair.refresh_token } : {}),
+      expires_in: pair.expires_in,
+      ...extra,
+    };
+  }
+
   /** Exchange a provider ID token for SpendWise tokens. */
   @Public()
   @Post('oidc/callback')
-  async oidcCallback(@Body(new ZodValidationPipe(oidcCallbackSchema)) body: unknown) {
+  async oidcCallback(
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Body(new ZodValidationPipe(oidcCallbackSchema)) body: unknown,
+  ) {
     const b = body as z.infer<typeof oidcCallbackSchema>;
     try {
       const claims = await this.oidc.verify(b.provider as Provider, b.id_token, b.nonce);
@@ -51,7 +92,7 @@ export class AuthController {
         display_name: claims.name,
       });
       const pair = await this.tokens.issue(user.user_id, b.device_id ?? null);
-      return { ...pair, new_account: user.created };
+      return this.respondWithTokens(req, res, pair, { new_account: user.created });
     } catch (err) {
       if (err instanceof OidcError) {
         // One generic message: telling the caller WHICH check failed helps an
@@ -80,7 +121,11 @@ export class AuthController {
 
   @Public()
   @Post('otp/verify')
-  async otpVerify(@Body(new ZodValidationPipe(otpVerifySchema)) body: unknown) {
+  async otpVerify(
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Body(new ZodValidationPipe(otpVerifySchema)) body: unknown,
+  ) {
     const b = body as z.infer<typeof otpVerifySchema>;
     try {
       const { target } = await this.otp.verify(b.challenge_id, b.code);
@@ -91,7 +136,7 @@ export class AuthController {
         email_verified: false,
       });
       const pair = await this.tokens.issue(user.user_id, b.device_id ?? null);
-      return { ...pair, new_account: user.created };
+      return this.respondWithTokens(req, res, pair, { new_account: user.created });
     } catch (err) {
       if (err instanceof OtpError) throw new UnauthorizedException({ code: err.code });
       throw err;
@@ -100,22 +145,45 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
-  async refresh(@Body(new ZodValidationPipe(refreshSchema)) body: unknown) {
+  async refresh(
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Body(new ZodValidationPipe(refreshSchema)) body: unknown,
+  ) {
     const { refresh_token } = body as z.infer<typeof refreshSchema>;
+    const presented = readRefreshToken(req, refresh_token);
+    if (!presented) throw new UnauthorizedException({ code: 'invalid_refresh' });
     try {
-      return await this.tokens.rotate(refresh_token);
+      const pair = await this.tokens.rotate(presented);
+      return this.respondWithTokens(req, res, pair);
     } catch (err) {
-      if (err instanceof TokenError) throw new UnauthorizedException({ code: err.code });
+      if (err instanceof TokenError) {
+        // The old cookie is now useless, and on reuse detection the whole
+        // family is dead. Clearing it stops the browser retrying forever with
+        // a credential that will never work again.
+        clearRefreshCookie(res, this.cookieOpts);
+        throw new UnauthorizedException({ code: err.code });
+      }
       throw err;
     }
   }
 
   @Post('logout')
-  async logout(@Req() req: AuthedRequest, @Body(new ZodValidationPipe(refreshSchema)) body: unknown) {
+  async logout(
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+    @Body(new ZodValidationPipe(refreshSchema)) body: unknown,
+  ) {
     const { refresh_token } = body as z.infer<typeof refreshSchema>;
-    void refresh_token;
-    // Authenticated route: the guard has already established who this is.
-    return { ok: true, user: req.user!.id };
+    const presented = readRefreshToken(req, refresh_token);
+    if (presented) {
+      // Kill the whole lineage, not just this token: signing out on one device
+      // should not leave a rotation chain alive that an attacker already holds.
+      const session = await this.tokens.sessionFor(presented);
+      if (session) await this.tokens.revokeFamily(session.family_id, session.user_id);
+    }
+    clearRefreshCookie(res, this.cookieOpts);
+    return { ok: true };
   }
 
   /** The linked providers for the signed-in user (§9.1 asks for two). */

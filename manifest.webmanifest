@@ -1,6 +1,6 @@
 {
-  "name": "Budget Tracker",
-  "short_name": "Budget Tracker",
+  "name": "SpendWise",
+  "short_name": "SpendWise",
   "description": "Know what you can spend today.",
   "start_url": "./",
   "scope": "./",

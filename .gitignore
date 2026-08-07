@@ -1,1 +1,29 @@
 .DS_Store
+
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# test / coverage
+coverage/
+.vitest/
+
+# env & secrets — never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# capacitor native projects (generated)
+apps/client/android/
+apps/client/ios/
+
+# editors / OS
+.idea/
+*.swp

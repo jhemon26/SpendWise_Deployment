@@ -1,0 +1,95 @@
+/* ============================================================
+   SPENDWISE DESIGN TOKENS
+   Lifted verbatim from the prototype's :root block. Two colour
+   systems, kept apart:
+     IDENTITY — category / bank hues. Icons only. Decorative.
+     STATE    — brand / positive / warning / danger. Numbers,
+                bars, rings and chips. Always mean something.
+   Nothing is coloured unless it is one of those two things.
+   ============================================================ */
+:root {
+  /* surfaces */
+  --bg: #06070a;
+  --surface: #0f121c;
+  --surface-2: #161b28;
+  --surface-3: #1e2436;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --line-brand: rgba(99, 102, 241, 0.32);
+
+  --hero-bg: linear-gradient(145deg, #181c2e 0%, #0e111c 100%);
+  --brand-cyan: #06b6d4;
+  --brand-purple: #a855f7;
+
+  /* text */
+  --text: #f2f5f9;
+  --text-muted: #98a2b3;
+  --text-dim: #6b7480;
+
+  /* state */
+  --brand: #6366f1;
+  --brand-soft: rgba(99, 102, 241, 0.16);
+  --positive: #10b981;
+  --positive-soft: rgba(16, 185, 129, 0.14);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.14);
+
+  /* spacing — 4pt scale, no ad-hoc values anywhere */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px;
+
+  /* radii */
+  --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-xl: 24px; --r-pill: 999px;
+
+  /* type scale */
+  --fs-hero: 38px; --fs-xl: 22px; --fs-lg: 17px;
+  --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
+
+  --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* Light theme. The prototype was dark-only; production needs both.
+   OS preference is the default signal, the in-app toggle overrides it. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #eff1f4;
+    --surface-3: #e6eaef;
+    --line: rgba(16, 19, 26, 0.08);
+    --line-strong: rgba(16, 19, 26, 0.16);
+    --hero-bg: linear-gradient(145deg, #ffffff 0%, #eef0f5 100%);
+    --text: #10131a;
+    --text-muted: #545c69;
+    --text-dim: #7b8593;
+    --shadow: 0 12px 32px -12px rgba(16, 19, 26, 0.18);
+  }
+}
+
+:root[data-theme='light'] {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #eff1f4;
+  --surface-3: #e6eaef;
+  --line: rgba(16, 19, 26, 0.08);
+  --line-strong: rgba(16, 19, 26, 0.16);
+  --hero-bg: linear-gradient(145deg, #ffffff 0%, #eef0f5 100%);
+  --text: #10131a;
+  --text-muted: #545c69;
+  --text-dim: #7b8593;
+  --shadow: 0 12px 32px -12px rgba(16, 19, 26, 0.18);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

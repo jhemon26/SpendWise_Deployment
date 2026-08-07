@@ -26,7 +26,7 @@ Every requirement in the brief is met below except the ones that are *physically
 **At 10,000 daily active users that risk has real weight.** Ten thousand people feel a 30-minute recovery. Two consequences, both costed in §17:
 
 - **Add Managed Postgres (+$15/mo) sooner rather than later.** It removes the worst outcome — losing the database to a stale snapshot — and brings failover and point-in-time recovery. This is the single highest-value line item in the budget.
-- **Throughput is genuinely not the problem.** The worked model in §15.1 puts you at ~1.4 req/s average and ~27 req/s peak, roughly 10× under what one droplet serves. What actually bites at this scale is **Argon2 memory during login storms** (§9.1) and **synchronised sync ticks** (§6.3). Both are solved in this document; neither is obvious, and both are outages if missed.
+- **Throughput is genuinely not the problem.** The worked model in §15.1 puts you at ~1.4 req/s average and ~27 req/s peak, roughly 10× under what one droplet serves. What actually bites at this scale is **synchronised sync ticks** (§6.3) — a herd of clients reconnecting in lockstep after an outage. Solved by jitter, but not obvious, and an outage if missed. (An earlier draft also had Argon2 login storms as the top risk; passwordless auth in §9.1 deleted that class entirely.)
 
 **When to stop accepting the single host entirely:** ~30k DAU, or the first time revenue depends on uptime. §15.2 gives the migration path.
 
@@ -190,7 +190,45 @@ The ordering in `add()` is the whole philosophy: **disk, screen, network — in 
 
 The prototype is dark-only. Production needs both, so tokens gain a light set under `@media (prefers-color-scheme: light)` plus a `[data-theme]` override so the in-app toggle beats the OS. Ionic's breakpoints handle tablet; the existing `@media (max-width:460px)` rule that drops the device frame becomes the phone breakpoint.
 
-### 3.5 Low-end device performance
+### 3.5 First-run experience — nobody meets an empty app
+
+A budgeting app is at its worst on day one: every chart is empty, every total is £0.00, and the user has no idea whether it works. That first screen is where most finance apps lose the user. Four stages, in order:
+
+#### Stage 1 — Welcome (3 screens, skippable)
+
+Value proposition, not a feature tour: *"Know what you can spend today"* → *"Works with no signal"* → *"Your data is encrypted and private"*. Swipeable, dismissible, shown once. Under 15 seconds if read, one tap if not.
+
+#### Stage 2 — Setup wizard (the "data extraction")
+
+Four questions, each on its own screen, each skippable with a sensible default. This is the step that means the app has real numbers immediately:
+
+| Question | Default | Why it's asked |
+|---|---|---|
+| Reporting currency | GBP (from device locale) | Drives every conversion (§5.1.1) |
+| Monthly take-home income | skip → prompts later | Powers the savings projection |
+| Day-to-day budget | 40% of income if given | The single most important number in the app |
+| Which categories matter | 6 preselected from a grid of ~14 | Avoids both a blank list and an overwhelming one |
+
+Answers write straight to the local DB and sync later — the wizard works **fully offline**, which matters because a first launch on mobile data in a lift shouldn't fail.
+
+#### Stage 3 — Seed the app so it isn't blank
+
+The user lands on a populated Home, never a zero state. Two paths, and the choice is explicit:
+
+- **"Add your first expense"** — opens the add sheet with a coach mark. Home shows the full budget with a genuine "nothing spent yet" framing rather than a broken-looking screen.
+- **"Explore with sample data"** — loads a demo month, clearly badged with a persistent **"Sample data · Clear"** banner. One tap wipes it and keeps the user's real settings.
+
+> **The sample data must be unmistakably labelled and trivially removable.** Demo rows that quietly become real data are a genuine harm in a finance app — someone will budget against numbers that were never theirs. The banner stays until dismissed, and clearing is one tap with no confirmation dialog.
+
+The existing prototype's `demoState()` is already exactly this dataset, so it ports directly.
+
+#### Stage 4 — Contextual coach marks
+
+Not a carousel — a single tooltip the first time each screen is opened (Budgets: *"Tap any category to change its limit"*; Insights: *"Fills in as you add transactions"*). Dismissed permanently per screen, tracked in local settings. No tour library; ~40 lines and a `<Popover>`.
+
+**One thing the flow must not skip:** with passwordless sign-in, losing your only provider account means losing the data (§9.1). Stage 2 ends by prompting for a **second sign-in method**, explaining plainly why. It is skippable, but the app re-asks until satisfied.
+
+### 3.6 Low-end device performance
 
 - Route-level code splitting — Insights (charts) never loads for a user who only adds expenses.
 - Virtualised transaction list (`@tanstack/react-virtual`) above ~100 rows.
@@ -260,21 +298,23 @@ This is an honest asymmetry: web is meaningfully weaker than native. Documented,
 ### 5.1 Schema
 
 ```sql
--- ─── identity ────────────────────────────────────────────────
+-- ─── identity (passwordless — see §9.1) ──────────────────────
 CREATE TABLE users (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email           CITEXT UNIQUE NOT NULL,
-  email_verified  BOOLEAN NOT NULL DEFAULT FALSE,
-  password_hash   TEXT NOT NULL,              -- Argon2id
   display_name    TEXT NOT NULL,
-  mfa_secret      BYTEA,                      -- pgcrypto-encrypted
+  base_currency   CHAR(3) NOT NULL DEFAULT 'GBP',   -- reporting currency
+  locale          TEXT NOT NULL DEFAULT 'en-GB',
+  dek_wrapped     BYTEA NOT NULL,             -- per-user key, KEK-wrapped (§9.3)
+  mfa_secret      BYTEA,                      -- optional TOTP, encrypted
   mfa_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
-  failed_attempts SMALLINT NOT NULL DEFAULT 0,
-  locked_until    TIMESTAMPTZ,
+  onboarded_at    TIMESTAMPTZ,                -- NULL => show first-run flow (§3.6)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at      TIMESTAMPTZ
+  deleted_at      TIMESTAMPTZ,
+  purge_after     TIMESTAMPTZ                 -- set on erasure request (§9.6)
 );
+-- No password_hash, no email column, no lockout counters: identity lives in
+-- `identities` (§9.1), one row per linked provider.
 
 CREATE TABLE roles (
   id    SMALLSERIAL PRIMARY KEY,
@@ -331,10 +371,18 @@ CREATE TABLE transactions (
   user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   category_id  UUID,
   bank_id      UUID,
-  amount_cents BIGINT NOT NULL,        -- integers only. never float.
-  currency     CHAR(3) NOT NULL DEFAULT 'GBP',
-  merchant     TEXT,
-  note_enc     BYTEA,                  -- encrypted free text
+
+  -- multi-currency: what was actually spent …
+  amount_minor BIGINT NOT NULL,        -- integers only. never float.
+  currency     CHAR(3) NOT NULL,       -- ISO-4217, e.g. 'GBP','EUR','JPY'
+  -- … and its value in the user's reporting currency, frozen at entry time
+  base_minor   BIGINT NOT NULL,
+  base_currency CHAR(3) NOT NULL,
+  fx_rate      NUMERIC(18,8) NOT NULL DEFAULT 1,
+  fx_rate_date DATE NOT NULL,
+
+  merchant_enc BYTEA,                  -- encrypted (§9.3)
+  note_enc     BYTEA,
   occurred_at  TIMESTAMPTZ NOT NULL,
   is_income    BOOLEAN NOT NULL DEFAULT FALSE,
   pending      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -344,6 +392,16 @@ CREATE TABLE transactions (
   deleted_at   TIMESTAMPTZ,
   PRIMARY KEY (local_id, occurred_at)   -- partition key must be in the PK
 ) PARTITION BY RANGE (occurred_at);
+
+-- daily reference rates, shared across all users (not user data → no RLS)
+CREATE TABLE fx_rates (
+  rate_date  DATE NOT NULL,
+  base       CHAR(3) NOT NULL,
+  quote      CHAR(3) NOT NULL,
+  rate       NUMERIC(18,8) NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'ecb',
+  PRIMARY KEY (rate_date, base, quote)
+);
 
 -- ─── sync bookkeeping ────────────────────────────────────────
 CREATE TABLE sync_state (
@@ -385,7 +443,30 @@ CREATE TABLE notifications (
 );
 ```
 
-**Money is `BIGINT` cents, never `FLOAT`.** `0.1 + 0.2 !== 0.3` in IEEE-754, and in a finance app that becomes a support ticket you cannot reproduce. Integer cents, formatted at the edge.
+### 5.1.1 Money and multi-currency
+
+**Integer minor units, never `FLOAT`.** `0.1 + 0.2 !== 0.3` in IEEE-754, and in a finance app that becomes a support ticket you cannot reproduce.
+
+**"Minor units", not "cents".** The exponent is per-currency: GBP/EUR/USD have 2 decimal places, **JPY has 0**, KWD and BHD have **3**. Hardcoding `/100` produces a 100× error on a Tokyo lunch. The ISO-4217 exponent table ships in `libs/shared-types` and every format/parse call goes through it.
+
+**Two amounts are stored, always.** `amount_minor` + `currency` is what the user actually spent — it never changes. `base_minor` is its value in their reporting currency, **frozen at the rate on the day of the transaction** (`fx_rate`, `fx_rate_date` recorded alongside).
+
+> **Never re-convert history at today's rate.** If you store only the foreign amount and convert at read time, every past month's totals silently change as rates move — a user's completed January would show a different figure each time they opened it. Freezing the rate makes history immutable, which is what a ledger has to be. The cost is one extra column; the alternative is a bug you cannot explain to a user.
+
+**Rate source:** European Central Bank daily reference rates via the free `frankfurter.app` API — no key, no quota, authoritative for a UK/EU user base. A nightly BullMQ job caches them into `fx_rates`; the table is shared reference data, so it carries no RLS policy.
+
+#### The offline-first collision
+
+A user in Paris with no signal adds a €14 lunch. There is no live rate. Resolution:
+
+1. The client ships with a rate snapshot and refreshes it opportunistically (daily, ~2KB for the majors).
+2. Offline entry converts using the newest cached rate and sets `fx_rate_provisional = true`.
+3. On sync, the **server recomputes** `base_minor` using the true ECB rate for `occurred_at` and returns the corrected record.
+4. The UI shows a subtle "rate updated" affordance if the corrected figure differs materially.
+
+This keeps the write instant — the promise of §6.1 — while making the server authoritative for the number that ends up in reports. Where a currency has no cached rate at all, the transaction is stored with `base_minor = NULL` and excluded from totals until the first sync fills it in, which is honest rather than inventing a figure.
+
+**Budgets and category limits are denominated in the user's base currency only.** Per-currency budgets sound reasonable and are a trap: "£300 groceries" and "€50 groceries" cannot be meaningfully summed into one progress bar. One budget currency, many spend currencies.
 
 ### 5.2 Indexing
 
@@ -414,17 +495,21 @@ The payoff is operational, not just query speed: dropping an expired audit parti
 
 **Retention at 10k DAU.** The audit table grows ~7 GB/year — faster than the transaction data it describes. Drop audit partitions older than **12 months** (retain longer only if a compliance obligation requires it, and archive to Spaces if so). Transaction partitions are never dropped; they are user data. This single retention rule roughly halves total disk growth (§15.1).
 
-### 5.4 Tuning for a 2GB droplet
+### 5.4 Tuning for the launch droplet (8GB, Postgres capped at 2GB)
+
+Postgres shares the host with Node, Redis and Nginx, so it is given a 2GB container limit (§11) and tuned to that — **not** to the host's 8GB.
 
 ```
-shared_buffers = 512MB          # ~25% of RAM
-effective_cache_size = 1536MB
-work_mem = 8MB                  # conservative: 100 conns × sorts must not OOM
-maintenance_work_mem = 128MB
+shared_buffers = 512MB          # ~25% of the container's 2GB, not the host's 8GB
+effective_cache_size = 1536MB   # host page cache does the rest of the work
+work_mem = 8MB                  # per sort node: 50 conns × several nodes must not OOM
+maintenance_work_mem = 256MB    # vacuum and index builds
 max_connections = 50            # real limiter is PgBouncer, below
 random_page_cost = 1.1          # SSD
 wal_compression = on
 ```
+
+**Tune `shared_buffers` to the container limit, never the host.** Sizing it at 25% of 8GB gives Postgres 2GB of buffers inside a 2GB cgroup — the OOM killer arrives under load, not at boot, which makes it look like a mystery crash rather than a config error. When the droplet is resized (§15.2), raise the Postgres container limit *first*, then `shared_buffers`.
 
 **PgBouncer in transaction mode is mandatory, not optional.** Each Postgres connection costs ~10MB; 200 idle Node connections would consume the entire droplet. PgBouncer multiplexes hundreds of client connections onto ~20 real ones.
 
@@ -492,6 +577,7 @@ Detection: the client pushes `version`. If the server's stored version is higher
 | **Client-wins** | `deleted_at` (tombstones) | Deletion is deliberate and explicit. A resurrected transaction the user already deleted is far more alarming than a lost edit. |
 | **Field-level merge** | `settings`, `budgets` | Two devices editing different fields of the same object should both win. Merge per-field on `updated_at`, not per-record. |
 | **Manual** | Amount mismatch on the same `local_id` | The one case where guessing is unacceptable. Flag `sync_status='conflict'`, surface both values, let the user choose. |
+| **Server-recomputed** | `base_minor`, `fx_rate`, `fx_rate_date` | Never merged. The server holds authoritative ECB rates and overwrites whatever provisional figure the client computed offline (§5.1.1). `amount_minor` and `currency` — what the user actually typed — are client-authoritative and never touched. |
 
 **Why LWW as the default rather than CRDTs.** SpendWise is single-user, multi-device. Genuine concurrent edits to the *same* record are rare, and true convergence (CRDT/OT) would multiply client complexity and storage several-fold to solve a problem this product does not have. LWW with a clear escalation path to manual resolution for money fields is the right cost/benefit. Revisit only if shared household accounts ship.
 
@@ -522,13 +608,19 @@ NestJS is chosen deliberately despite the heavier footprint. Guards, interceptor
 REST, versioned under `/v1`, JSON, `api.domain.com`.
 
 ```
-POST   /v1/auth/register            POST /v1/auth/verify-email
-POST   /v1/auth/login               POST /v1/auth/mfa/verify
+POST   /v1/auth/oidc/start          POST /v1/auth/oidc/callback   (Google, Apple)
+POST   /v1/auth/otp/send            POST /v1/auth/otp/verify      (phone)
+POST   /v1/auth/magic/send          POST /v1/auth/magic/verify    (email)
+POST   /v1/auth/identities/link     DELETE /v1/auth/identities/:id
 POST   /v1/auth/refresh             POST /v1/auth/logout
+POST   /v1/auth/mfa/enrol           POST /v1/auth/mfa/verify      (optional TOTP)
 GET    /v1/me                       PATCH /v1/me
+POST   /v1/me/onboarding            GET  /v1/me/export            (GDPR, §9.6)
+DELETE /v1/me                       (erasure, 30-day grace)
 POST   /v1/sync/push                GET  /v1/sync/pull
-GET    /v1/transactions             POST /v1/files/presign
-GET    /v1/notifications            GET  /v1/health   (unauthenticated)
+GET    /v1/fx/rates?base=GBP        GET  /v1/transactions
+POST   /v1/files/presign            GET  /v1/notifications
+GET    /v1/health                   (unauthenticated)
 ```
 
 Conventions: cursor pagination (never `OFFSET` — it degrades linearly), RFC 7807 `application/problem+json` errors, `ETag`/`If-None-Match` on collections, strict zod validation at the boundary with unknown keys **stripped, not ignored**.
@@ -553,60 +645,169 @@ Buckets are **private**; reads go through short-lived presigned GETs. Server-sid
 
 Security is the top priority, so this section is the specification, not a summary.
 
-### 9.1 Authentication
+### 9.1 Authentication — passwordless, federated only
 
-- **Argon2id**, `m=32MiB, t=3, p=1`, **behind a hard concurrency semaphore of 8**. See the box below — the parameters and the semaphore are equally load-bearing.
+**There is no "create account" form and SpendWise never stores a password.** Identity is delegated to providers who do it better than we can, and the user arrives already verified.
 
-> #### ⚠️ Argon2 memory is a DoS vector at 10k DAU — sized deliberately
+> #### ✅ This decision deleted an entire class of risk
 >
-> Memory-hardness is the point of Argon2, but the cost is paid by *your server*, per concurrent hash. The obvious "strong" setting is a self-inflicted outage:
+> An earlier draft of this document specced Argon2id and then had to defend it against a memory-exhaustion DoS at 10k DAU. **Removing passwords removes all of it:** no password hashing, no Argon2 memory budget, no concurrency semaphore, no credential stuffing, no password reset flow (historically the most-attacked endpoint in any app), no breach-reuse exposure, no lockout tuning. The most secure credential store is the one you don't operate.
+
+#### Supported methods
+
+| Method | Protocol | Notes |
+|---|---|---|
+| **Sign in with Google** | OIDC, auth-code + PKCE | Primary. Widest reach in the UK. |
+| **Sign in with Apple** | OIDC, auth-code + PKCE | **Mandatory, not optional** — App Store Guideline 4.8 requires it if you offer any other third-party sign-in on iOS. Omitting it means rejection. |
+| **Phone + SMS OTP** | 6-digit, 5-min TTL | Offered, with reservations — see the warning below. |
+| **Email magic link** | Signed single-use token, 15-min TTL | **My recommendation as the fourth option** (§20 gave me the call). Costs nothing, needs no provider account, and is the natural fallback for anyone without Google/Apple who doesn't want to hand over a phone number. |
+
+#### Flow
+
+```
+App ──► ASWebAuthenticationSession (iOS) / Custom Tab (Android) / redirect (web)
+     ──► Provider consent ──► authorization code + PKCE verifier
+     ──► POST /v1/auth/oidc/callback
+            server: exchange code, fetch provider JWKS (cached 24h),
+                    verify signature, iss, aud, exp, nonce
+                    find-or-create user, link identity
+     ──► SpendWise access token (15 min) + refresh token (30 days)
+```
+
+**Never an embedded WebView.** Google actively blocks them, and they are phishable by construction — the user cannot see the address bar to verify who is asking for their credentials. System browser components only.
+
+**PKCE is required on every platform**, including web. Without it a stolen authorization code is redeemable by an attacker.
+
+> #### ⚠️ Phone/SMS is the weakest link — treat it accordingly
 >
-> | Concurrent logins | at `m=64MiB` (rejected) | at `m=32MiB` + semaphore 8 (chosen) |
-> |---|---|---|
-> | 10 | 0.62 GB | 0.25 GB |
-> | 50 | 3.12 GB — **OOM on a 4GB droplet** | 0.25 GB (42 queued) |
-> | 100 | 6.25 GB — **instant death** | 0.25 GB (92 queued) |
+> For a finance app, SMS OTP is the least safe option offered. Two concrete threats:
 >
-> At 10k DAU a login storm is routine, not exotic: an app update, a forced logout, credential stuffing — or the 90-day JWT key rotation specified in this very document. Unbounded, each one is an outage.
+> **SIM swap.** An attacker who ports the number receives the OTP. This is not theoretical — it is the standard attack on phone-based finance accounts. Mitigations: bind sessions to a device ID; require step-up verification when a phone login arrives from an unrecognised device; impose a **24-hour cooling-off** on data export and account deletion after any phone-only sign-in from a new device.
 >
-> **The fix is the semaphore, not just smaller parameters.** Password verification runs through a queue capped at 8 in flight; overflow waits, and sheds with `503 Retry-After` past a 2s wait. Memory is then bounded at **8 × 32MiB = 256MB regardless of load**. `m=32MiB, t=3, p=1` still exceeds the OWASP floor (`m=19MiB, t=2, p=1`), so this costs security nothing.
+> **SMS pumping fraud.** An attacker triggers thousands of OTPs to premium-rate numbers they control and takes a revenue share. This bills *you*. At £0.04/SMS an unthrottled endpoint is an open cheque. Mitigations: hard caps (3 OTPs per number/hour, 10 per IP/day), block high-risk country and premium ranges by prefix allowlist, Cloudflare Turnstile before the send, and a **daily spend ceiling that hard-stops the endpoint**.
 >
-> Benchmark on the real droplet before launch and tune `t` until a hash costs ~250ms. Never tune by raising `m` without re-checking the table above.
-- **Access token:** JWT, **15 min**, RS256, `sub`/`jti`/`roles`/`perms`. Short-lived because a stateless JWT cannot be revoked mid-life; the expiry *is* the revocation window.
+> Present Google and Apple first in the UI. Phone is a fallback, not the default.
+
+#### Tokens & session
+
+- **Access token:** JWT, **15 min**, RS256, carrying `sub`/`jti`/`roles`/`perms`. Short-lived because a stateless JWT cannot be revoked mid-life; the expiry *is* the revocation window.
 - **Refresh token:** opaque 256-bit random, **30 days**, SHA-256 hashed at rest. Not a JWT — it must be revocable, and only a DB lookup gives that.
 - **Refresh-token rotation with reuse detection.** Each refresh issues a new token and retires the old one. If a *retired* token is presented, the entire `family_id` is revoked and the user is alerted — this is the signature of a stolen token being replayed, and it is the single highest-value auth control here.
 - **Storage:** web uses `HttpOnly; Secure; SameSite=Strict` cookies for the refresh token (immune to XSS exfiltration); native uses Keychain/Keystore. Access tokens live in memory only — never `localStorage`.
-- **MFA:** TOTP (RFC 6238), secret encrypted at rest, 10 single-use recovery codes hashed like passwords.
-- **Lockout:** exponential — 5 failures → 1 min, then 5 min, 15, 60. Per account *and* per IP, so neither a targeted nor a spray attack is cheap.
+- **Optional TOTP** on top of the provider, for users who want a second factor SpendWise controls. Secret encrypted at rest; 10 single-use recovery codes stored as SHA-256 (they are already 128-bit random, so a slow hash buys nothing).
+- **OTP throttling replaces account lockout.** With no password there is nothing to brute-force, but the OTP endpoints still need limits: 5 verify attempts per challenge, then the challenge is burned.
 
-### 9.2 Authorisation
+#### Account linking & recovery
+
+One human, many identities:
+
+```sql
+CREATE TABLE identities (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider      TEXT NOT NULL,        -- 'google' | 'apple' | 'phone' | 'email'
+  subject       TEXT NOT NULL,        -- provider's stable user id
+  email         CITEXT,
+  phone_e164    TEXT,
+  verified_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at  TIMESTAMPTZ,
+  UNIQUE (provider, subject)
+);
+CREATE UNIQUE INDEX ON identities (user_id, provider);
+```
+
+Matching a returning user by **verified email** links Google and Apple to one account automatically. Never link on an *unverified* email — that is an account-takeover primitive.
+
+**Apple's private relay** (`@privaterelay.appleid.com`) means the email may not match anything else and may be revoked by the user at any time. Treat `provider + subject` as the durable key; email is a hint, never the identifier.
+
+**Users must be prompted to add a second identity.** With one provider and no password, losing that provider account means losing the data — and there is no reset email to fall back on. The onboarding flow (§3.6) asks for a backup method, and the app nags until there are two.
+
+### 9.2 Authorisation & tenant isolation
 
 RBAC + granular permissions. Every handler declares its requirement; a global guard denies by default. **Ownership is enforced in the query, not after it** — `WHERE user_id = $currentUser` rather than fetch-then-compare. That eliminates the IDOR class of bug structurally rather than by vigilance.
 
-### 9.3 OWASP Top 10 coverage
+#### Postgres Row-Level Security — the second, independent wall
+
+Application-layer checks are one bug away from a cross-account leak, and at 10k users that bug is a reportable breach. **RLS makes isolation a property of the database, not of developer discipline.**
+
+```sql
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions FORCE ROW LEVEL SECURITY;   -- applies to the table owner too
+
+CREATE POLICY tenant_isolation ON transactions
+  USING      (user_id = current_setting('app.user_id')::uuid)
+  WITH CHECK (user_id = current_setting('app.user_id')::uuid);
+```
+
+Repeated for every user-scoped table. A request interceptor issues `SET LOCAL app.user_id = $1` at the start of each transaction; `SET LOCAL` scopes it to that transaction, so a pooled connection can never leak context between requests. The API connects as a role that is **not** the table owner and has no `BYPASSRLS`.
+
+The result: a query that forgets its `WHERE user_id` clause returns **zero rows**, not someone else's data. `USING` filters reads; `WITH CHECK` blocks writing a row you don't own. Both are required — `USING` alone lets you insert a record attributed to another user.
+
+Verified by a CI test that authenticates as user A and attempts to read, update and delete user B's rows across every table. That test is a release gate.
+
+### 9.3 Per-user encryption — a database dump is not a breach
+
+The brief says "no one sees no one's data, very secure". RLS achieves that against application bugs; envelope encryption achieves it against a **stolen backup or a compromised droplet**.
+
+```
+KEK  (master key, DO/Vault secrets manager — never on disk, never in the image)
+ └─► DEK per user (random 256-bit, stored wrapped in users.dek_wrapped)
+      └─► AES-256-GCM over sensitive fields:
+            transactions.merchant, transactions.note_enc,
+            identities.phone_e164, users.mfa_secret
+```
+
+Structural columns — `user_id`, `amount_minor`, `base_minor`, `occurred_at`, `category_id` — stay plaintext so indexes, partitions and aggregate queries still work. This is a deliberate trade: encrypting the amounts would make every budget rollup a full decrypt-and-scan, which no droplet at this budget can afford. Amounts alone, stripped of merchant and note, are of limited value to an attacker.
+
+**What this buys:** a leaked `pg_dump` or a stolen Spaces backup is ciphertext. Compromising the data requires the KEK too, which lives in a different system.
+
+**Crypto-shredding:** GDPR erasure (§9.6) destroys the user's DEK. Their rows become permanently unreadable in every historical backup instantly — without which "delete my data" would mean rewriting 30 days of encrypted archives, which is not practical.
+
+### 9.4 OWASP Top 10 coverage
 
 | Risk | Control |
 |---|---|
-| A01 Broken access control | Deny-by-default guards; ownership in the WHERE clause; no client-trusted IDs |
-| A02 Cryptographic failures | TLS 1.3; Argon2id; pgcrypto for MFA secrets/notes; SQLCipher on device |
+| A01 Broken access control | Deny-by-default guards; ownership in the WHERE clause; **Postgres RLS as an independent second wall** (§9.2) |
+| A02 Cryptographic failures | TLS 1.3; per-user envelope encryption (§9.3); SQLCipher on device. **No passwords to leak** |
 | A03 Injection | Parameterised queries **only** — raw string SQL banned by lint rule; zod validation |
 | A04 Insecure design | Threat model per feature; rate limits designed in, not retrofitted |
 | A05 Misconfiguration | Distroless images; non-root containers; env validated by zod at boot, process exits if invalid |
 | A06 Vulnerable components | Dependabot; `pnpm audit` gates CI; Trivy scans images |
-| A07 Auth failures | Rotation + reuse detection; lockout; MFA; no user enumeration in error copy |
+| A07 Auth failures | Federated identity — no passwords, no stuffing, no reset flow; refresh rotation + reuse detection; PKCE |
 | A08 Integrity failures | Signed images; pinned digests; CI provenance |
 | A09 Logging failures | Structured audit log of every auth and mutation event; alerts on anomalies |
-| A10 SSRF | No user-supplied URLs are fetched server-side. Egress allowlist |
+| A10 SSRF | Only provider JWKS endpoints are fetched server-side, from a hardcoded allowlist. No user-supplied URLs |
 
-### 9.4 Transport, headers, and the rest
+### 9.5 Transport, headers, and the rest
 
 CSP (`default-src 'self'`, no `unsafe-inline` — the prototype's inline styles move to files during the port), HSTS with preload, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, restrictive `Permissions-Policy`. CSRF: `SameSite=Strict` plus double-submit token on cookie-authenticated mutations; native clients use bearer tokens and are structurally immune.
 
-Rate limits: `/auth/login` 5/min/IP, `/auth/register` 3/hr/IP, `/sync/*` 60/min/user, global 300/min/IP — enforced at Cloudflare *and* in Redis, because edge rules alone fail open if someone finds the origin IP.
+Rate limits: `/auth/oidc/*` 10/min/IP, **`/auth/otp/send` 3/hour/number and 10/day/IP** (§9.1 — this one is a direct bill, not just load), `/sync/*` 60/min/user, global 300/min/IP — enforced at Cloudflare *and* in Redis, because edge rules alone fail open if someone finds the origin IP.
 
-**Secrets:** Docker secrets on the droplet, GitHub Encrypted Secrets in CI, never in the image or the repo. `gitleaks` runs in CI. Postgres and Redis credentials rotate quarterly; JWT signing keys rotate every 90 days with overlapping validity so no user is logged out.
+**Secrets:** Docker secrets on the droplet, GitHub Encrypted Secrets in CI, never in the image or the repo. `gitleaks` runs in CI. The **KEK never leaves the secrets manager**. Postgres and Redis credentials rotate quarterly; JWT signing keys rotate every 90 days with overlapping validity so no user is logged out.
 
 **Suspicious login detection:** new device/IP/geo triggers an email; impossible-travel (two logins too far apart for the elapsed time) forces re-authentication.
+
+### 9.6 UK data protection (UK GDPR + DPA 2018)
+
+The user base is UK-based, which makes the following obligations rather than nice-to-haves.
+
+| Obligation | Implementation |
+|---|---|
+| **Data residency** | Droplet and Spaces in **LON1**. Backups never leave the UK region. |
+| **ICO registration** | Register as a data controller before launch (~£52/yr for a small organisation). |
+| **Lawful basis** | Contract (Art. 6(1)(b)) for the core service. No advertising, no profiling, so no consent banner beyond strictly-necessary cookies. |
+| **Right of access / portability** | `GET /v1/me/export` produces a signed JSON+CSV archive of every record, delivered as a 24-hour presigned Spaces link. Must complete within one month. |
+| **Right to erasure** | `DELETE /v1/me` → 30-day grace (recoverable, and it protects against a hijacked session wiping an account), then **crypto-shredding of the user's DEK** (§9.3) plus row deletion. |
+| **Breach notification** | 72-hour ICO notification runbook in `infra/scripts/`. The audit log is what makes the required "scope of the breach" answerable. |
+| **Data minimisation** | No location, no contacts, no device fingerprinting, no third-party analytics SDKs. Sentry is configured to scrub PII. |
+| **DPA with processors** | DigitalOcean and the SMS provider both offer GDPR DPAs — sign both before launch. |
+| **DPIA** | Financial data at 10k+ users warrants a Data Protection Impact Assessment. Do it during Phase 6. |
+| **Retention** | Audit logs 12 months (§5.3); deleted accounts purged after 30 days; backups age out at 30 days. |
+
+**Financial data is not "special category" under Art. 9**, so the stricter Art. 9 conditions do not apply — but it is unambiguously high-risk personal data, which is why the DPIA and the encryption in §9.3 are appropriate rather than excessive.
+
+**No Open Banking means no FCA authorisation.** Manual entry keeps SpendWise entirely outside the regulated-activity perimeter — a very large saving in time, cost and legal exposure. **The moment you add bank feeds, that changes**: you become an Account Information Service Provider and need FCA registration. §20 keeps the schema ready without incurring the obligation.
 
 ---
 
@@ -781,9 +982,8 @@ The target is **10k DAU**, not 10k registered. Worked from assumptions you can c
 
 **What actually constrains you at this scale, in order:**
 
-1. **Argon2 memory during login storms** — the real ceiling. Solved by the semaphore in §9.1. Unsolved, it is the thing that takes you down.
-2. **Thundering-herd sync** — solved by jitter in §6.3.
-3. **Backup and autovacuum competing with live traffic** — schedule `pg_dump` at 03:00 local, tune autovacuum to be more aggressive but smaller-batched so it never blocks the peak.
+1. **Thundering-herd sync** — now the top risk, since passwordless auth (§9.1) removed the Argon2 ceiling that used to hold this spot. Solved by jitter in §6.3.
+2. **Backup and autovacuum competing with live traffic** — schedule `pg_dump` at 03:00 local, tune autovacuum to be more aggressive but smaller-batched so it never blocks the peak.
 4. **Disk** — 13.4 GB/yr means the 80GB volume lasts ~4 years at 60% usable. Audit partitions older than **12 months** are dropped, which roughly halves the growth rate.
 5. **Raw request throughput** — comfortably last, at roughly 10× headroom.
 
@@ -791,12 +991,31 @@ The target is **10k DAU**, not 10k registered. Worked from assumptions you can c
 
 | Option | Cost | Verdict |
 |---|---|---|
-| 2 vCPU / 4GB | $24 | Adequate for throughput **only with the Argon2 semaphore in place**. Tight during a blue-green deploy (two API containers) overlapping a backup. |
-| **4 vCPU / 8GB** | **$48** | **Recommended.** Headroom for login bursts, deploys, and vacuum without competing with live traffic. |
+| 2 vCPU / 4GB | $24 | Serves the traffic, but leaves almost nothing spare when a blue-green deploy (two API containers) overlaps the nightly backup. |
+| **4 vCPU / 8GB** | **$48** | **Launch here.** Headroom for deploys and vacuum without competing with live traffic. |
 
-At 10k DAU an outage affects ten thousand people, which changes the calculus: I'd rather spend the extra $24/mo than debug an OOM at 3am. If budget is immovable, the $24 droplet is genuinely workable — but then the Argon2 semaphore is not optional, it is the thing keeping you up.
+At 10k DAU an outage affects ten thousand people, which changes the calculus: better to spend the extra $24/mo than debug an OOM at 3am, mid-deploy, with a rollback path that also needs memory. §15.2 has the upgrade ladder from here.
 
-### 15.2 Beyond 10k
+### 15.2 The vertical upgrade ladder
+
+**Strategy: launch sized for 10k DAU, then resize the droplet as growth arrives.** DigitalOcean resizes are a reboot — CPU/RAM-only resizes take ~1 minute and are reversible; disk resizes are permanent. Because everything runs in Compose with named volumes, a resize needs no reconfiguration: power off, resize, power on, containers come back.
+
+| Stage | DAU | Droplet | $/mo | Upgrade trigger — whichever comes first |
+|---|---|---|---|---|
+| **Launch** | **0 – 12k** | **4 vCPU / 8GB** | **$48** | — start here |
+| 2 | 12k – 25k | 8 vCPU / 16GB | $96 | p95 latency > 400ms, or RAM > 75% sustained, or CPU > 60% at peak |
+| 3 | 25k – 50k | Move Postgres to Managed | +$15 | Disk > 60%, or backup window > 20 min, or **any** data-loss scare |
+| 4 | 50k+ | Multi-droplet + LB (§15.3) | ~$150 | Vertical ceiling reached, or uptime becomes contractual |
+
+**Why start at 4 vCPU / 8GB rather than 2/4GB and climb sooner.** The £24/mo saving is real, but the failure mode isn't gradual: a 4GB droplet running Postgres, Redis, and *two* API containers during a blue-green deploy has almost no headroom, and the first symptom is an OOM kill during a deploy — the worst possible moment, because you are mid-change and the rollback path is also memory-hungry. 8GB buys the margin to deploy safely while serving peak traffic.
+
+**Instrument the triggers before you need them.** The Grafana dashboard (§14) should carry exactly the four metrics in the table above, with alerts at the thresholds. Growth that surprises you is growth that pages you at 3am; growth you have a dashboard for is a calendar entry.
+
+**Two things that will not scale vertically**, and no droplet size fixes either — they are addressed in code, at launch, in this document:
+- **Argon2 login storms** — moot now, §9.1 removed passwords entirely.
+- **Synchronised sync ticks** — jitter, §6.3. A herd of 50k clients hits a 16GB droplet just as hard as a 4GB one.
+
+### 15.3 Beyond vertical
 
 **10k → 30k DAU.** Resize the droplet (vertical, ~5 min downtime). Add Redis caching for aggregates. Tune Postgres. No architecture change.
 
@@ -832,22 +1051,27 @@ Backups are encrypted **before** upload — Spaces credentials leaking must not 
 
 Sized for **10,000 daily active users** (§15.1).
 
+Launch configuration, sized for **10,000+ daily active users** (§15.1), region **LON1** (§9.6).
+
 | Item | Spec | Cost |
 |---|---|---|
-| Droplet | **4 vCPU / 8GB / 160GB SSD** | $48 |
+| Droplet | **4 vCPU / 8GB / 160GB SSD** | $48.00 |
 | Snapshots | 20% of droplet | $9.60 |
-| Spaces | 250GB + 1TB transfer | $5 |
+| Spaces | 250GB + 1TB transfer | $5.00 |
+| SMS OTP | ~2,000/mo @ £0.035 (§9.1) | ~$9.00 |
 | Cloudflare | Free tier | $0 |
-| Domain | amortised | ~$1 |
-| Sentry / UptimeRobot / Grafana | free tiers | $0 |
-| **Recommended total** | | **≈ $64/mo** |
-| *+ Managed Postgres* | *strongly advised at this scale (§15.2)* | *+$15* |
+| Sentry / UptimeRobot / Grafana / Loki | free tiers & self-hosted | $0 |
+| Domain | amortised | ~$1.00 |
+| ICO registration | £52/yr, amortised (§9.6) | ~$5.50 |
+| **Launch total** | | **≈ $78/mo** |
 
-**Budget option — $34/mo:** 2 vCPU/4GB droplet ($24) + snapshots ($4.80) + Spaces ($5). Handles 10k DAU on throughput, but **only with the Argon2 semaphore from §9.1**, and with no slack when a deploy overlaps a backup.
+**SMS is the one variable line.** It scales with *new users and new devices*, not DAU — steady state is low, but a growth spike or an SMS-pumping attack can multiply it overnight. The daily spend ceiling in §9.1 is a cost control as much as a security control. **Pushing Google/Apple ahead of phone in the UI is the cheapest optimisation available** — every user who picks one costs $0 instead of $0.04.
 
-**Do not run 10k DAU on 1 vCPU/2GB.** Postgres, Redis and two API containers do not fit, and Argon2 has nowhere to live.
+**Trimming to ~$63/mo:** drop SMS entirely (Google + Apple + email magic link only) and skip snapshots for the first months. I'd keep snapshots.
 
-**At 100k DAU:** ~$150/mo — 3 API droplets, managed Postgres with a read replica, load balancer.
+**Do not run 10k DAU on 1 vCPU/2GB** — Postgres, Redis and two API containers during a deploy do not fit.
+
+**Growth costs** follow the ladder in §15.2: ~$126/mo at 25k DAU, ~$150/mo at 50k+.
 
 ---
 
@@ -860,10 +1084,17 @@ Sized for **10,000 daily active users** (§15.1).
 - [ ] All secrets in Docker secrets; `gitleaks` clean
 - [ ] Containers non-root, read-only, `cap_drop: ALL`
 - [ ] No DB/Redis port published to host
-- [ ] Argon2id params benchmarked on the actual droplet
 - [ ] CSP with no `unsafe-inline`; HSTS preload submitted
-- [ ] Rate limits verified live on `/auth/login`
 - [ ] Automated backup **restore** rehearsed end-to-end
+- [ ] **RLS cross-tenant test passes** — authenticate as A, attempt read/update/delete of B's rows on every table (§9.2). Release gate.
+- [ ] API role confirmed **not** table owner and lacks `BYPASSRLS`
+- [ ] KEK stored in secrets manager, never on the droplet disk or in an image (§9.3)
+- [ ] Crypto-shred path tested: erase a test user, confirm their rows are unreadable from a pre-deletion backup
+- [ ] OIDC: PKCE enforced; `iss`/`aud`/`exp`/`nonce` all validated; JWKS cached with rotation handling
+- [ ] **Sign in with Apple implemented** — App Store rejects without it (§9.1)
+- [ ] SMS: per-number and per-IP caps live, premium-prefix blocklist, **daily spend ceiling armed**
+- [ ] Region confirmed **LON1** for droplet *and* Spaces; ICO registration filed; DPAs signed (§9.6)
+- [ ] Data export and erasure endpoints tested end-to-end
 
 **Ongoing**
 - [ ] Dependabot weekly; monthly `pnpm audit`
@@ -879,8 +1110,8 @@ Sized for **10,000 daily active users** (§15.1).
 | Phase | Deliverable | Est. |
 |---|---|---|
 | 2 | Monorepo scaffold, shared types, CI skeleton | 1 wk |
-| 3 | Auth: Argon2id, JWT+rotation, MFA, RBAC, audit | 2 wks |
-| 4 | Local DB adapters + Zustand + port prototype screens | 2 wks |
+| 3 | Auth: OIDC (Google/Apple), phone OTP, magic link, identity linking, JWT+rotation, RBAC, **RLS policies + cross-tenant tests**, audit | 2 wks |
+| 4 | Local DB adapters + Zustand + port prototype screens + **first-run flow (§3.5)** + multi-currency | 2.5 wks |
 | 5 | Sync engine both sides — **the highest-risk component** | 2 wks |
 | 6 | Droplet, Docker, Nginx, Cloudflare, backups | 1 wk |
 | 7 | CI/CD, monitoring, blue/green | 1 wk |
@@ -890,9 +1121,29 @@ Sized for **10,000 daily active users** (§15.1).
 
 ---
 
-## 20. Open decisions
+## 20. Decisions — resolved
 
-1. **Currency** — schema is multi-currency ready (`currency CHAR(3)`), but is v1 GBP-only? Affects whether FX rates are needed.
-2. **Bank sync** — is Open Banking (TrueLayer/Plaid) on the roadmap? It changes the compliance posture substantially (FCA registration) and should be designed for now, even if built later.
-3. **Household sharing** — if two people will ever edit one budget, LWW is insufficient and §6.4 needs revisiting before launch, not after.
-4. **Data residency** — UK/EU users imply GDPR: export, erasure, and a DPA with DigitalOcean. Droplet region should be LON1.
+| # | Question | Decision | Consequence in this document |
+|---|---|---|---|
+| 1 | Currency | **Multi-currency from v1** | §5.1.1 — dual amounts, frozen FX rate per transaction, ECB daily rates, offline provisional conversion |
+| 2 | Open Banking | **No — manual entry only** | **Stays outside the FCA perimeter entirely.** Schema keeps `bank_id` and the sync envelope so feeds can be added later without migration |
+| 3 | First-run experience | **Welcome + wizard + seed + coach marks** | §3.5 — the app is never blank; sample data is labelled and one-tap removable |
+| 4 | Authentication | **Passwordless: Google, Apple, phone OTP, + email magic link** | §9.1 rewritten. No passwords anywhere. Sign in with Apple is mandatory for App Store approval |
+| 5 | Data isolation | **Per-user, defence in depth** | §9.2 Postgres RLS as an independent wall; §9.3 per-user envelope encryption so a stolen dump is ciphertext |
+| 6 | Residency | **UK — LON1** | §9.6 UK GDPR: ICO registration, export, erasure by crypto-shredding, DPAs, DPIA |
+| 7 | Remaining calls (mine) | see below | — |
+
+**Decisions I made under item 7, with reasons:**
+
+- **Email magic link as a fourth sign-in option.** Free, no provider account, no SMS bill, and the natural path for anyone who has neither Google nor Apple and would rather not hand over a phone number. It also gives every user a cheap route to the *second* identity §9.1 requires.
+- **ECB rates via `frankfurter.app`.** No API key, no quota, authoritative for a UK user base. A paid FX provider is unjustifiable at this budget.
+- **Budgets in base currency only.** Per-currency budgets cannot be summed into one honest progress bar.
+- **Zustand, unchanged.** Nothing in these seven answers moves the state-management argument.
+- **No i18n framework yet.** Multi-*currency* is not multi-*language*, and the user base is UK. Strings go through a `t()` shim from day one so adding `i18next` later is a swap, not a refactor — but shipping the framework now is weight for no benefit.
+- **TOTP stays optional, not mandatory.** Google and Apple already enforce their own MFA. Forcing a second factor on top would cost more users than it protects, and the users who want it can enable it.
+
+### Still genuinely open
+
+1. **Household / shared budgets.** Answer #5 ("no one sees anyone's data") reads as a firm *no*, and this design assumes it — Last-Write-Wins (§6.4) and per-user RLS both depend on single-writer data. **If shared budgets are ever wanted, both need redesigning before launch, not after.** Worth confirming explicitly.
+2. **App Store business model.** Free, paid, or subscription changes whether StoreKit / Play Billing are needed, and receipt validation is server work that isn't scoped here.
+3. **Push notifications.** Budget alerts are the obvious use, and the `notifications` table exists — but FCM/APNs setup, token lifecycle and consent aren't yet specified.

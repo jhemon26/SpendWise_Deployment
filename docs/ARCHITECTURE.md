@@ -741,7 +741,9 @@ CREATE POLICY tenant_isolation ON transactions
 
 Repeated for every user-scoped table. A request interceptor issues `SET LOCAL app.user_id = $1` at the start of each transaction; `SET LOCAL` scopes it to that transaction, so a pooled connection can never leak context between requests. The API connects as a role that is **not** the table owner and has no `BYPASSRLS`.
 
-The result: a query that forgets its `WHERE user_id` clause returns **zero rows**, not someone else's data. `USING` filters reads; `WITH CHECK` blocks writing a row you don't own. Both are required — `USING` alone lets you insert a record attributed to another user.
+The result: a query that forgets its `WHERE user_id` clause returns **zero rows**, not someone else's data. `USING` filters reads; `WITH CHECK` constrains writes.
+
+> **Correction, verified against Postgres 16.** An earlier draft claimed `USING` alone lets you insert a row attributed to another user. That is **false** — when `WITH CHECK` is omitted, Postgres reuses the `USING` expression as the write check, and the forged insert is rejected either way. We still write both explicitly, for two better reasons: it documents intent at the point of definition, and it is the only way to express a read predicate that legitimately differs from the write predicate (for example, "you may see shared rows but only create your own"). Trusting the implicit fallback is fine for tenant isolation and a trap the moment the two rules diverge.
 
 Verified by a CI test that authenticates as user A and attempts to read, update and delete user B's rows across every table. That test is a release gate.
 

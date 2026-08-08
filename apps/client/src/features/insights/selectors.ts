@@ -15,6 +15,13 @@ export interface MonthContext {
   /** Monthly day-to-day budget in minor units. */
   dayToDayMinor: number;
   savingsTargetMinor: number;
+  /**
+   * Total of every SCHEDULED fixed cost this month — not what has been paid so
+   * far. "To save" must not climb through the month as bills go out; the money
+   * is committed the moment the month starts. Falls back to fixed spending when
+   * no fixed costs are configured.
+   */
+  fixedCostsMinor?: number;
 }
 
 export interface Derived {
@@ -39,6 +46,7 @@ export interface Derived {
   avgDayMinor: number;
   fixedSharePct: number;
   projectedSavingsMinor: number;
+  committedFixedMinor: number;
 }
 
 const inMonth = (iso: string, now: Date): boolean => {
@@ -60,7 +68,7 @@ export function derive(
   categories: Category[],
   ctx: MonthContext,
 ): Derived {
-  const { now, dayToDayMinor, savingsTargetMinor } = ctx;
+  const { now, dayToDayMinor, savingsTargetMinor, fixedCostsMinor } = ctx;
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const dayOfMonth = now.getDate();
@@ -114,8 +122,9 @@ export function derive(
    * the day-to-day budget — or less what you have actually spent once you blow
    * past it. Stable while on budget, falls the moment you are not.
    */
+  const committedFixedMinor = fixedCostsMinor ?? fixedSpentMinor;
   const projectedSavingsMinor =
-    incomeMinor - fixedSpentMinor - Math.max(dayToDayMinor, flexSpentMinor);
+    incomeMinor - committedFixedMinor - Math.max(dayToDayMinor, flexSpentMinor);
 
   void savingsTargetMinor;
 
@@ -124,7 +133,7 @@ export function derive(
     flexSpentMinor, fixedSpentMinor, incomeMinor, monthTotalMinor,
     leftMinor, perDayMinor, spentPct, datePct, expectedMinor, deltaMinor, evenPaceMinor,
     todaySpentMinor, byCategory, spendFreeDays, biggest, avgDayMinor, fixedSharePct,
-    projectedSavingsMinor,
+    projectedSavingsMinor, committedFixedMinor,
   };
 }
 
@@ -191,3 +200,113 @@ export function categoryBreakdown(
     .filter((x): x is { category: Category; totalMinor: number; pct: number } => Boolean(x.category))
     .sort((a, b) => b.totalMinor - a.totalMinor);
 }
+
+/* ── Fixed costs ───────────────────────────────────────────────────────── */
+
+export interface Bill {
+  category: Category;
+  name: string;
+  amountMinor: number;
+  dueDay: number;
+  paid: boolean;
+  /** Negative once the due day has passed. */
+  inDays: number;
+}
+
+/**
+ * Fixed costs for the current month.
+ *
+ * "Paid" is not a stored flag — it is whether a transaction landed in that
+ * category this month. Storing it would let the two disagree, and the
+ * transaction is the fact.
+ */
+export function billsFor(
+  categories: Category[],
+  transactions: Transaction[],
+  now: Date,
+): Bill[] {
+  const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const paidIds = new Set(
+    transactions
+      .filter((t) => !t.deleted_at && !t.is_income && inMonth(t.occurred_at, now))
+      .map((t) => t.category_id)
+      .filter((id): id is string => id !== null),
+  );
+
+  return categories
+    .filter((c) => c.is_fixed && !c.deleted_at && c.due_day !== null)
+    .map((c) => {
+      // A 31st falls back to the last day rather than spilling into next month.
+      const dueDay = Math.min(c.due_day as number, daysInMonth);
+      return {
+        category: c,
+        name: c.name,
+        amountMinor: c.limit_minor,
+        dueDay,
+        paid: paidIds.has(c.local_id),
+        inDays: dueDay - dayOfMonth,
+      };
+    })
+    .sort((a, b) => a.dueDay - b.dueDay);
+}
+
+/** Still genuinely owed, soonest first — what the home screen warns about. */
+export function upcomingBills(
+  categories: Category[],
+  transactions: Transaction[],
+  now: Date,
+  limit = 2,
+): Bill[] {
+  return billsFor(categories, transactions, now).filter((b) => !b.paid).slice(0, limit);
+}
+
+export const fixedCostsTotalMinor = (bills: Bill[]): number =>
+  bills.reduce((s, b) => s + b.amountMinor, 0);
+
+/* ── Month history ─────────────────────────────────────────────────────── */
+
+export interface MonthPoint {
+  label: string;
+  totalMinor: number;
+  current: boolean;
+}
+
+/**
+ * Spending per month for the trailing window, oldest first.
+ *
+ * The prototype hardcoded five literals here, so the chart never moved when
+ * the data did. These are summed from the transactions themselves, which means
+ * an empty history renders honestly as empty bars rather than as a fiction.
+ */
+export function monthHistory(
+  transactions: Transaction[],
+  now: Date,
+  months = 6,
+): MonthPoint[] {
+  const live = transactions.filter((t) => !t.deleted_at && !t.is_income);
+  const out: MonthPoint[] = [];
+
+  for (let back = months - 1; back >= 0; back--) {
+    const m = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const totalMinor = live
+      .filter((t) => {
+        const d = new Date(t.occurred_at);
+        return d.getFullYear() === m.getFullYear() && d.getMonth() === m.getMonth();
+      })
+      .reduce((s, t) => s + Math.abs(t.base_minor ?? t.amount_minor), 0);
+    out.push({
+      label: m.toLocaleDateString('en-GB', { month: 'short' }),
+      totalMinor,
+      current: back === 0,
+    });
+  }
+  return out;
+}
+
+/** Average of the COMPLETED months only — this month is still accruing. */
+export const historyAverageMinor = (points: MonthPoint[]): number => {
+  const past = points.filter((p) => !p.current);
+  if (past.length === 0) return 0;
+  return Math.round(past.reduce((s, p) => s + p.totalMinor, 0) / past.length);
+};

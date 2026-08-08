@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App.js';
+import './design-system/fonts.css';
 import './design-system/tokens.css';
 
 const el = document.getElementById('root');

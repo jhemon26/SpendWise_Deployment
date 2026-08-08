@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import type { Category, Transaction } from '@spendwise/shared-types';
-import { derive, statusOf, groupByDay, dayLabel, categoryBreakdown } from './selectors.js';
+import {
+  derive, statusOf, groupByDay, dayLabel, categoryBreakdown,
+  billsFor, upcomingBills, fixedCostsTotalMinor, monthHistory, historyAverageMinor,
+} from './selectors.js';
 import { arcFor, paintedLength, GAUGE_C } from '../../design-system/gauge-math.js';
 
 const NOW = new Date('2026-08-07T12:00:00Z');
@@ -13,7 +16,7 @@ function cat(over: Partial<Category> = {}): Category {
     local_id: id(), server_id: null, created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
     deleted_at: null, sync_status: 'synced', version: 1, device_id: 'd',
     name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
-    is_fixed: false, ...over,
+    is_fixed: false, due_day: null, ...over,
   };
 }
 
@@ -201,5 +204,104 @@ describe('gauge geometry — the original bug', () => {
 
   it('clamps above 100 rather than overdrawing', () => {
     expect(paintedLength(arcFor(150))).toBeCloseTo(GAUGE_C, 6);
+  });
+});
+
+describe('billsFor', () => {
+  const rent = cat({ name: 'Rent', is_fixed: true, due_day: 1, limit_minor: 90000 });
+  const gym = cat({ name: 'Gym', is_fixed: true, due_day: 10, limit_minor: 3000 });
+  const food = cat({ name: 'Groceries', is_fixed: false, limit_minor: 32000 });
+
+  it('only lists fixed categories that have a due day', () => {
+    const withoutDay = cat({ name: 'Misc fixed', is_fixed: true, due_day: null });
+    const out = billsFor([rent, gym, food, withoutDay], [], NOW);
+    expect(out.map((b) => b.name)).toEqual(['Rent', 'Gym']);
+  });
+
+  it('orders by due day, soonest first', () => {
+    expect(billsFor([gym, rent], [], NOW).map((b) => b.dueDay)).toEqual([1, 10]);
+  });
+
+  it('marks a bill paid from the transaction, not a stored flag', () => {
+    // The transaction IS the fact. A separate boolean could disagree with it.
+    const paidRent = tx({ category_id: rent.local_id, amount_minor: -90000 });
+    const out = billsFor([rent, gym], [paidRent], NOW);
+    expect(out.find((b) => b.name === 'Rent')!.paid).toBe(true);
+    expect(out.find((b) => b.name === 'Gym')!.paid).toBe(false);
+  });
+
+  it('does not count income as paying a bill', () => {
+    const refund = tx({ category_id: rent.local_id, amount_minor: 90000, is_income: true });
+    expect(billsFor([rent], [refund], NOW)[0]!.paid).toBe(false);
+  });
+
+  it('ignores a payment from a different month', () => {
+    const lastMonth = tx({ category_id: rent.local_id, occurred_at: '2026-07-02T09:00:00.000Z' });
+    expect(billsFor([rent], [lastMonth], NOW)[0]!.paid).toBe(false);
+  });
+
+  it('clamps a 31st to the last day of a short month', () => {
+    // February has no 31st; the bill must not silently move into March.
+    const feb = new Date('2026-02-10T12:00:00Z');
+    const late = cat({ is_fixed: true, due_day: 31 });
+    expect(billsFor([late], [], feb)[0]!.dueDay).toBe(28);
+  });
+
+  it('reports days remaining, negative once overdue', () => {
+    // NOW is the 7th.
+    const out = billsFor([rent, gym], [], NOW);
+    expect(out.find((b) => b.name === 'Gym')!.inDays).toBe(3);
+    expect(out.find((b) => b.name === 'Rent')!.inDays).toBe(-6);
+  });
+
+  it('upcomingBills drops what is already paid', () => {
+    const paidRent = tx({ category_id: rent.local_id });
+    expect(upcomingBills([rent, gym], [paidRent], NOW).map((b) => b.name)).toEqual(['Gym']);
+  });
+
+  it('totals the scheduled amount, not what has been paid', () => {
+    expect(fixedCostsTotalMinor(billsFor([rent, gym], [], NOW))).toBe(93000);
+  });
+});
+
+describe('monthHistory', () => {
+  it('returns the window oldest-first with this month last', () => {
+    const out = monthHistory([], NOW, 6);
+    expect(out).toHaveLength(6);
+    expect(out.at(-1)!.current).toBe(true);
+    expect(out.filter((m) => m.current)).toHaveLength(1);
+  });
+
+  it('sums spending into the month it happened in', () => {
+    // base_minor is the reporting-currency value and is what totals must use,
+    // so it has to be set alongside amount_minor here.
+    const out = monthHistory([
+      tx({ amount_minor: -1000, base_minor: -1000, occurred_at: '2026-08-03T10:00:00.000Z' }),
+      tx({ amount_minor: -2500, base_minor: -2500, occurred_at: '2026-07-14T10:00:00.000Z' }),
+    ], NOW, 6);
+    expect(out.at(-1)!.totalMinor).toBe(1000);
+    expect(out.at(-2)!.totalMinor).toBe(2500);
+  });
+
+  it('excludes income — this is a spending chart', () => {
+    const out = monthHistory([
+      tx({ amount_minor: 500000, base_minor: 500000, is_income: true, occurred_at: '2026-08-03T10:00:00.000Z' }),
+    ], NOW, 6);
+    expect(out.at(-1)!.totalMinor).toBe(0);
+  });
+
+  it('averages only completed months — this one is still accruing', () => {
+    // Without excluding the current month a half-finished August would drag
+    // the "average" down and the comparison would be meaningless.
+    const points = [
+      { label: 'Jun', totalMinor: 2000, current: false },
+      { label: 'Jul', totalMinor: 4000, current: false },
+      { label: 'Aug', totalMinor: 10, current: true },
+    ];
+    expect(historyAverageMinor(points)).toBe(3000);
+  });
+
+  it('has no average before any month has completed', () => {
+    expect(historyAverageMinor([{ label: 'Aug', totalMinor: 10, current: true }])).toBe(0);
   });
 });

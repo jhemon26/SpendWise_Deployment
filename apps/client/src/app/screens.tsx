@@ -1,7 +1,9 @@
-import { formatMoney, formatSignedMoney, type Category, type Transaction } from '@spendwise/shared-types';
+import { formatMoney, formatSignedMoney, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import { Bar, Card, CardHead, Chip, Empty, Gauge, Icon } from '../design-system/components.js';
 import {
-  categoryBreakdown, derive, groupByDay, statusOf, STATUS_COLOUR, type Derived,
+  billsFor, categoryBreakdown, dayLabel, derive, fixedCostsTotalMinor, groupByDay,
+  historyAverageMinor, monthHistory, statusOf, STATUS_COLOUR,
+  type Bill, type Derived,
 } from '../features/insights/selectors.js';
 
 export interface ScreenData {
@@ -12,13 +14,33 @@ export interface ScreenData {
   now: Date;
   displayName: string;
   dayToDayMinor: number;
+  savingsTargetMinor: number;
   /** Tap a transaction row to edit it. Absent in read-only contexts. */
   onEdit?: ((t: Transaction) => void) | undefined;
   /** Absent when running purely locally — there is no session to end. */
   onSignOut?: (() => void) | undefined;
+  banks: Bank[];
+  /** Jump to another tab, for the "See all" / "All bills" card actions. */
+  onGoto?: ((tab: 'activity' | 'budgets') => void) | undefined;
+  /** Activity filter, lifted so the tab header can show the count. */
+  filter?: TxFilter | undefined;
+  onFilter?: ((f: TxFilter) => void) | undefined;
+  onAddCategory?: (() => void) | undefined;
+  /** Open the single-value editor for one of the month settings. */
+  onEditSetting?: ((which: 'budget' | 'savings' | 'name') => void) | undefined;
+  /** null opens the editor empty, for a new one. */
+  onEditCategory?: ((c: Category | null) => void) | undefined;
+  onEditBank?: ((b: Bank | null) => void) | undefined;
 }
 
+export type TxFilter = 'all' | 'spending' | 'income' | 'bills';
+
 const money = (minor: number, cur: string): string => formatMoney(minor, cur);
+/** Whole pounds, for figures where pence are noise (budgets, bills, totals). */
+const money0 = (minor: number, cur: string): string =>
+  formatMoney(minor, cur, 'en-GB').replace(/[.,]\d{2}$/, '');
+const monthName = (now: Date): string => now.toLocaleDateString('en-GB', { month: 'long' });
+const monthShort = (now: Date): string => now.toLocaleDateString('en-GB', { month: 'short' });
 /** Use for anything that shows a +/− sign. See formatSignedMoney. */
 const signed = (minor: number, cur: string): string => formatSignedMoney(minor, cur);
 const catOf = (cats: Category[], id: string | null): Category | undefined =>
@@ -26,11 +48,32 @@ const catOf = (cats: Category[], id: string | null): Category | undefined =>
 
 /* ── Home ─────────────────────────────────────────────────────────────── */
 
-export function Home({ transactions, categories, d, currency, dayToDayMinor, onEdit }: ScreenData): JSX.Element {
+export function Home({
+  transactions, categories, banks, d, currency, dayToDayMinor, savingsTargetMinor,
+  now, onEdit, onGoto,
+}: ScreenData): JSX.Element {
   const st = statusOf(d.spentPct);
   const over = d.deltaMinor > 0;
   const recent = transactions.filter((t) => !t.deleted_at)
     .slice().sort((a, b) => b.occurred_at.localeCompare(a.occurred_at)).slice(0, 3);
+  const bills = billsFor(categories, transactions, now);
+  const due = bills.filter((b) => !b.paid).slice(0, 2);
+
+  /* At the current burn rate, the day the day-to-day money is gone. Only
+     meaningful while there is still something left to run out of. */
+  let runsOut = '';
+  if (over && d.flexSpentMinor > 0 && d.leftMinor > 0) {
+    const ratePerDay = d.flexSpentMinor / d.dayOfMonth;
+    const day = Math.min(d.daysInMonth, Math.round(d.dayOfMonth + d.leftMinor / ratePerDay));
+    runsOut = `· runs out ${day} ${monthShort(now)} at this rate`;
+  }
+
+  const todayDelta = d.todaySpentMinor - d.evenPaceMinor;
+  const save = d.projectedSavingsMinor;
+  const saveTone = save >= savingsTargetMinor ? 'var(--positive)'
+    : save >= 0 ? 'var(--warning)' : 'var(--danger)';
+  const saveFoot = save >= savingsTargetMinor ? 'on track'
+    : save >= 0 ? `${money(savingsTargetMinor - save, currency)} short` : 'over budget';
 
   return (
     <>
@@ -39,76 +82,164 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
         border: '1px solid var(--line-brand)', borderRadius: 'var(--r-xl)',
         padding: 'var(--s4)', boxShadow: '0 16px 36px -14px rgba(0,0,0,.7)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--s3)' }}>
-          <p style={{
-            fontSize: 'var(--fs-2xs)', fontWeight: 800, letterSpacing: '.08em',
-            textTransform: 'uppercase', color: 'var(--brand-cyan)',
-          }}>Safe to spend</p>
-          <Chip tone={over ? 'warn' : 'ok'}>{over ? 'Spending fast' : 'On track'}</Chip>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s4)' }}>
-          <div style={{ minWidth: 0 }}>
-            <p className="num" data-testid="safe-to-spend" data-tour="safe-to-spend" style={{
-              fontSize: 'clamp(26px, 8.5vw, var(--fs-hero))', fontWeight: 800, letterSpacing: '-.035em',
-              lineHeight: 1.05, whiteSpace: 'nowrap', color: d.leftMinor < 0 ? 'var(--danger)' : undefined,
+        {/* Brand bloom in the top-right corner, as in the prototype. */}
+        <div aria-hidden style={{
+          position: 'absolute', top: -70, right: -60, width: 200, height: 200, pointerEvents: 'none',
+          background: 'radial-gradient(circle, rgba(99,102,241,.22) 0%, transparent 70%)',
+        }} />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s3)', marginBottom: 'var(--s3)' }}>
+            <p style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 'var(--fs-2xs)', fontWeight: 800, letterSpacing: '.08em',
+              textTransform: 'uppercase', color: 'var(--brand-cyan)',
             }}>
-              {money(d.leftMinor, currency)}
+              <svg viewBox="0 0 24 24" aria-hidden width={14} height={14} fill="var(--brand-cyan)">
+                <path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z" />
+              </svg>
+              Safe to spend
             </p>
-            <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-muted)', marginTop: 'var(--s2)' }}>
-              <strong className="num" style={{ color: 'var(--text)' }}>{money(d.perDayMinor, currency)}</strong>
-              {' '}a day for {d.daysLeft} {d.daysLeft === 1 ? 'day' : 'days'}
-            </p>
+            <Chip tone={over ? 'warn' : 'ok'}>{over ? 'Spending fast' : 'On track'}</Chip>
           </div>
-          <Gauge pct={d.spentPct} datePct={d.datePct} colour={STATUS_COLOUR[st]} tourId="gauge" size={78} />
-        </div>
 
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
-          marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
-        }}>
-          {([['Budget', money(dayToDayMinor, currency)],
-             ['Spent', money(d.flexSpentMinor, currency)],
-             ['Days left', String(d.daysLeft)]] as const).map(([k, v]) => (
-            <div key={k} style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>
-              <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, marginTop: 4 }}>{v}</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s4)' }}>
+            <div style={{ minWidth: 0 }}>
+              <p className="num" data-testid="safe-to-spend" data-tour="safe-to-spend" style={{
+                fontSize: 'clamp(26px, 8.5vw, var(--fs-hero))', fontWeight: 800, letterSpacing: '-.035em',
+                lineHeight: 1.05, whiteSpace: 'nowrap', color: d.leftMinor < 0 ? 'var(--danger)' : undefined,
+              }}>
+                {money(d.leftMinor, currency)}
+              </p>
+              <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-muted)', marginTop: 'var(--s2)' }}>
+                {d.leftMinor >= 0 ? (
+                  <>
+                    <strong className="num" style={{ color: 'var(--text)', fontWeight: 700 }}>{money(d.perDayMinor, currency)}</strong>
+                    {' '}a day for {d.daysLeft} {d.daysLeft === 1 ? 'day' : 'days'}
+                  </>
+                ) : (
+                  /* "−£6.97 a day" is nonsense once you are over: you cannot
+                     un-spend. Say what actually happened instead. */
+                  <>
+                    <strong className="num" style={{ color: 'var(--text)', fontWeight: 700 }}>{money(Math.abs(d.leftMinor), currency)}</strong>
+                    {' '}over with {d.daysLeft} {d.daysLeft === 1 ? 'day' : 'days'} to go
+                  </>
+                )}
+              </p>
             </div>
-          ))}
-        </div>
+            <Gauge pct={d.spentPct} datePct={d.datePct} colour={STATUS_COLOUR[st]} tourId="gauge" size={78} />
+          </div>
 
-        <p style={{ marginTop: 'var(--s3)', fontSize: 'var(--fs-xs)', fontWeight: 700 }}>
-          <span style={{ color: over ? 'var(--warning)' : 'var(--positive)' }}>
-            {money(Math.abs(d.deltaMinor), currency)} {over ? 'over' : 'under'} pace
-          </span>
-        </p>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
+            marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
+          }}>
+            {([['Budget', money0(dayToDayMinor, currency)],
+               ['Spent', money(d.flexSpentMinor, currency)],
+               ['Days left', String(d.daysLeft)]] as const).map(([k, v]) => (
+              <div key={k} style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>
+                <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, marginTop: 4 }}>{v}</p>
+              </div>
+            ))}
+          </div>
+
+          <p style={{
+            marginTop: 'var(--s3)', fontSize: 'var(--fs-xs)', fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+          }}>
+            <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden
+                 stroke={over ? 'var(--warning)' : 'var(--positive)'} strokeWidth={2.4}
+                 fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              {over
+                ? <><path d="M12 8v5" /><path d="M12 16.5h.01" /><circle cx="12" cy="12" r="9" /></>
+                : <path d="M4 12.5 9 17.5 20 6.5" />}
+            </svg>
+            <span style={{ color: over ? 'var(--warning)' : 'var(--positive)' }}>
+              {money(Math.abs(d.deltaMinor), currency)} {over ? 'over' : 'under'} pace
+            </span>
+            <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>
+              {over ? runsOut : '· you\u2019re ahead for the month'}
+            </span>
+          </p>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)' }}>
         <Tile label="Today" value={money(d.todaySpentMinor, currency)}
-              foot={`${money(Math.abs(d.todaySpentMinor - d.evenPaceMinor), currency)} ${d.todaySpentMinor > d.evenPaceMinor ? 'over' : 'under'}`} />
-        <Tile label="This month" value={money(d.monthTotalMinor, currency)} foot={`of ${money(dayToDayMinor + d.fixedSpentMinor, currency)}`} />
-        <Tile label="To save" value={money(d.projectedSavingsMinor, currency)}
-              foot={d.projectedSavingsMinor >= 0 ? 'on track' : 'over budget'}
-              tone={d.projectedSavingsMinor >= 0 ? 'var(--positive)' : 'var(--danger)'} />
+              foot={`${money(Math.abs(todayDelta), currency)} ${todayDelta > 0 ? 'over' : 'under'}`}
+              footTone={todayDelta > 0 ? 'var(--warning)' : 'var(--positive)'} />
+        <Tile label="This month" value={money(d.monthTotalMinor, currency)}
+              foot={`of ${money0(dayToDayMinor + d.committedFixedMinor, currency)}`} />
+        <Tile label="To save" value={money(save, currency)} foot={saveFoot} tone={saveTone} footTone={saveTone} />
       </div>
 
       <Card>
-        <CardHead title="Recent activity" />
+        <CardHead title="Coming up" action={onGoto && <CardAction onClick={() => onGoto('budgets')}>All bills</CardAction>} />
+        {due.length === 0
+          ? <Empty icon="bills" title="Nothing due" body="Every fixed cost this month is paid." />
+          : due.map((b, i) => <BillRow key={b.category.local_id} bill={b} currency={currency} now={now} divider={i > 0} />)}
+      </Card>
+
+      <Card>
+        <CardHead title="Recent activity" action={onGoto && <CardAction onClick={() => onGoto('activity')}>See all</CardAction>} />
         {recent.length === 0
           ? <Empty icon="other" title="No activity yet" body="Tap + to record your first transaction." />
-          : recent.map((t) => <Row key={t.local_id} t={t} cats={categories} onEdit={onEdit} />)}
+          : recent.map((t, i) => <Row key={t.local_id} t={t} cats={categories} banks={banks} onEdit={onEdit} divider={i > 0} />)}
       </Card>
     </>
   );
 }
 
-function Tile({ label, value, foot, tone }: { label: string; value: string; foot: string; tone?: string }): JSX.Element {
+/** The small brand-coloured link in a card header. */
+function CardAction({ onClick, children }: { onClick: () => void; children: React.ReactNode }): JSX.Element {
+  return (
+    <button type="button" onClick={onClick} style={{
+      fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--brand)',
+      background: 'none', border: 0, cursor: 'pointer', padding: 0,
+      display: 'flex', alignItems: 'center', gap: 3,
+    }}>{children}</button>
+  );
+}
+
+function BillRow({ bill, currency, now, divider, showStatus = false }: {
+  bill: Bill; currency: string; now: Date; divider: boolean; showStatus?: boolean;
+}): JSX.Element {
+  const c = bill.category;
+  const when = bill.paid
+    ? `Paid ${bill.dueDay} ${monthShort(now)}`
+    : bill.inDays <= 0
+      ? 'Overdue'
+      : `Due ${bill.dueDay} ${monthShort(now)} · ${bill.inDays} ${bill.inDays === 1 ? 'day' : 'days'}`;
+  return (
+    <>
+      {divider && <div style={{ height: 1, background: 'var(--line)' }} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3) 0' }}>
+        <Icon name={c.icon} size={40} colour={c.colour} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bill.name}</p>
+          <p style={{ fontSize: 'var(--fs-xs)', fontWeight: 500, color: 'var(--text-dim)', marginTop: 3 }}>{when}</p>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800 }}>{money0(bill.amountMinor, currency)}</p>
+          {showStatus && (
+            <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-dim)', marginTop: 3 }}>
+              {bill.paid ? 'Paid' : 'Scheduled'}
+            </p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Tile({ label, value, foot, tone, footTone }: {
+  label: string; value: string; foot: string; tone?: string; footTone?: string;
+}): JSX.Element {
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: 'var(--s3) var(--s3) var(--s4)' }}>
       <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{label}</p>
       <p className="num" style={{ fontSize: 'var(--fs-lg)', fontWeight: 800, letterSpacing: '-.03em', marginTop: 6, color: tone }}>{value}</p>
-      <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-dim)', marginTop: 3 }}>{foot}</p>
+      <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, color: footTone ?? 'var(--text-dim)', marginTop: 3 }}>{foot}</p>
     </div>
   );
 }
@@ -118,105 +249,227 @@ function Tile({ label, value, foot, tone }: { label: string; value: string; foot
  * currency — showing a €14 lunch as "£11.90" hides what the user actually paid.
  * The base-currency value is what feeds the budget totals (see selectors).
  */
-function Row({ t, cats, onEdit }: { t: Transaction; cats: Category[]; onEdit?: ((t: Transaction) => void) | undefined }): JSX.Element {
+function Row({ t, cats, banks, onEdit, divider = false }: {
+  t: Transaction;
+  cats: Category[];
+  banks: Bank[];
+  onEdit?: ((t: Transaction) => void) | undefined;
+  divider?: boolean;
+}): JSX.Element {
   const c = catOf(cats, t.category_id);
+  const b = t.bank_id ? banks.find((x) => x.local_id === t.bank_id) : undefined;
+  const label = t.is_income ? 'Income' : (c?.name ?? 'Uncategorised');
+  const iconName = t.is_income ? 'income' : (c?.icon ?? 'other');
+  const colour = t.is_income ? '#10B981' : (c?.colour ?? '#64748B');
+  const time = new Date(t.occurred_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const Tag = onEdit ? 'button' : 'div';
+
   return (
-    <Tag
-      {...(onEdit ? { onClick: () => onEdit(t), type: 'button' as const } : {})}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3) 0',
-        width: '100%', textAlign: 'left', background: 'none', border: 0,
-        color: 'inherit', font: 'inherit', cursor: onEdit ? 'pointer' : 'default',
-      }}>
-      <Icon name={t.is_income ? 'income' : (c?.icon ?? 'other')} colour={t.is_income ? '#10B981' : (c?.colour ?? '#64748B')} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {t.merchant ?? c?.name ?? 'Transaction'}
-        </p>
-        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 3 }}>
-          {t.is_income ? 'Income' : (c?.name ?? 'Uncategorised')}
-          {t.sync_status !== 'synced' && ' · pending sync'}
-        </p>
-      </div>
-      <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, color: t.is_income ? 'var(--positive)' : undefined }}>
-        {signed(t.is_income ? Math.abs(t.amount_minor) : -Math.abs(t.amount_minor), t.currency)}
-      </p>
-    </Tag>
+    <>
+      {divider && <div style={{ height: 1, background: 'var(--line)' }} />}
+      <Tag
+        {...(onEdit ? { type: 'button' as const, onClick: () => onEdit(t) } : {})}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--s3)', width: '100%',
+          textAlign: 'left', padding: 'var(--s3) 0', background: 'none', border: 0,
+          borderRadius: 'var(--r-md)', color: 'inherit',
+          cursor: onEdit ? 'pointer' : 'default',
+        }}
+      >
+        <Icon name={iconName} size={40} colour={colour} />
+        <span style={{ display: 'block', flex: 1, minWidth: 0 }}>
+          <span style={{
+            display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 700, letterSpacing: '-.01em',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{t.merchant ?? label}</span>
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+            fontSize: 'var(--fs-xs)', fontWeight: 500, color: 'var(--text-dim)', marginTop: 3,
+          }}>
+            <span>{label}</span>
+            <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text-dim)', flexShrink: 0 }} />
+            <span className="num">{time}</span>
+            {t.pending && (
+              <span style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase',
+                padding: '2px 6px', borderRadius: 5,
+                background: 'var(--warning-soft)', color: 'var(--warning)',
+              }}>Pending</span>
+            )}
+            {t.sync_status !== 'synced' && <span>· not yet synced</span>}
+          </span>
+        </span>
+        <span style={{ display: 'block', textAlign: 'right', flexShrink: 0 }}>
+          <span className="num" style={{
+            display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 800,
+            color: t.is_income ? 'var(--positive)' : undefined,
+          }}>
+            {signed(t.is_income ? Math.abs(t.amount_minor) : -Math.abs(t.amount_minor), t.currency)}
+          </span>
+          {b && (
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end',
+              fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-dim)', marginTop: 3,
+            }}>
+              <i style={{ width: 7, height: 7, borderRadius: '50%', background: b.colour, flexShrink: 0 }} />
+              {b.name}
+            </span>
+          )}
+        </span>
+      </Tag>
+    </>
   );
 }
 
 /* ── Activity ─────────────────────────────────────────────────────────── */
 
-export function Activity({ transactions, categories, currency, now, onEdit }: ScreenData): JSX.Element {
-  const groups = groupByDay(transactions, now);
-  if (groups.length === 0) {
-    return <Card><Empty icon="other" title="Nothing here yet" body="No transactions recorded this month." /></Card>;
-  }
+export function Activity({
+  transactions, categories, banks, currency, now, onEdit, filter = 'all', onFilter,
+}: ScreenData): JSX.Element {
+  const live = transactions.filter((t) => !t.deleted_at);
+  const isBill = (t: Transaction): boolean => {
+    const c = catOf(categories, t.category_id);
+    return Boolean(c?.is_fixed);
+  };
+  const counts = {
+    all: live.length,
+    spending: live.filter((t) => !t.is_income).length,
+    income: live.filter((t) => t.is_income).length,
+    bills: live.filter(isBill).length,
+  };
+  const keep = (t: Transaction): boolean =>
+    filter === 'all' ? true
+      : filter === 'income' ? t.is_income
+        : filter === 'bills' ? isBill(t)
+          : !t.is_income;
+
+  const groups = groupByDay(live.filter(keep), now);
+
   return (
     <>
-      {groups.map((g) => (
-        <div key={g.label}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: 'var(--s4) 0 var(--s2)' }}>
-            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{g.label}</span>
-            <span className="num" style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: g.netMinor > 0 ? 'var(--positive)' : 'var(--text-dim)' }}>
-              {signed(g.netMinor, currency)}
-            </span>
-          </div>
-          <Card style={{ padding: 'var(--s1) var(--s4)' }}>
-            {g.items.map((t) => <Row key={t.local_id} t={t} cats={categories} onEdit={onEdit} />)}
-          </Card>
+      {onFilter && (
+        <div role="group" aria-label="Filter activity" style={{
+          display: 'flex', gap: 'var(--s2)', overflowX: 'auto',
+          padding: 'var(--s1) 0 var(--s2)', scrollbarWidth: 'none',
+        }}>
+          {(['all', 'spending', 'income', 'bills'] as const).map((f) => {
+            const on = filter === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={on}
+                onClick={() => onFilter(f)}
+                style={{
+                  fontSize: 'var(--fs-xs)', fontWeight: 700, whiteSpace: 'nowrap',
+                  padding: '8px 14px', borderRadius: 'var(--r-pill)', cursor: 'pointer',
+                  background: on ? 'var(--text)' : 'var(--surface)',
+                  color: on ? 'var(--bg)' : 'var(--text-muted)',
+                  border: `1px solid ${on ? 'var(--text)' : 'var(--line)'}`,
+                  transition: 'background .15s ease, color .15s ease, border-color .15s ease',
+                }}
+              >
+                {f === 'all' ? 'All' : f === 'spending' ? 'Spending' : f === 'income' ? 'Income' : 'Bills'}
+                <span className="num" style={{ opacity: .55, marginLeft: 5 }}>{counts[f]}</span>
+              </button>
+            );
+          })}
         </div>
-      ))}
+      )}
+
+      {groups.length === 0
+        ? (
+          <Card>
+            <Empty
+              icon="other"
+              title="Nothing here yet"
+              body={`No ${filter === 'all' ? 'transactions' : filter} recorded this month. Tap + to add one.`}
+            />
+          </Card>
+        )
+        : groups.map((g) => (
+          <div key={g.label}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+              padding: 'var(--s4) 0 var(--s2)', position: 'sticky', top: 0, zIndex: 5,
+              background: 'var(--bg)',
+            }}>
+              <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{g.label}</span>
+              <span className="num" style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: g.netMinor > 0 ? 'var(--positive)' : 'var(--text-dim)' }}>
+                {signed(g.netMinor, currency)}
+              </span>
+            </div>
+            <Card style={{ padding: 'var(--s1) var(--s4)' }}>
+              {g.items.map((t, i) => (
+                <Row key={t.local_id} t={t} cats={categories} banks={banks} onEdit={onEdit} divider={i > 0} />
+              ))}
+            </Card>
+          </div>
+        ))}
     </>
   );
 }
 
 /* ── Budgets ──────────────────────────────────────────────────────────── */
 
-export function Budgets({ categories, d, currency, dayToDayMinor }: ScreenData): JSX.Element {
+export function Budgets({
+  categories, transactions, d, currency, dayToDayMinor, now, onAddCategory,
+}: ScreenData): JSX.Element {
   const flex = categories.filter((c) => !c.is_fixed && !c.deleted_at);
   const total = statusOf(d.spentPct);
+  const bills = billsFor(categories, transactions, now);
+
   return (
     <>
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--s3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--s3)', marginBottom: 'var(--s3)' }}>
           <div>
-            <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Day-to-day</p>
-            <p className="num" style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, marginTop: 6, color: d.leftMinor < 0 ? 'var(--danger)' : undefined }}>
+            <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+              {monthName(now)} day-to-day
+            </p>
+            <p className="num" style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, letterSpacing: '-.035em', marginTop: 6, color: d.leftMinor < 0 ? 'var(--danger)' : undefined }}>
               {money(Math.abs(d.leftMinor), currency)} {d.leftMinor < 0 ? 'over' : 'left'}
             </p>
           </div>
           <Chip tone="neutral">{d.dayOfMonth} of {d.daysInMonth} days</Chip>
         </div>
         <Bar pct={d.spentPct} colour={STATUS_COLOUR[total]} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--s2)', fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-dim)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--s3)', marginTop: 'var(--s2)', fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-dim)' }}>
           <span className="num">{money(d.flexSpentMinor, currency)} spent</span>
-          <span className="num">{money(dayToDayMinor, currency)} budget</span>
+          <span className="num">{money0(dayToDayMinor, currency)} budget</span>
         </div>
       </Card>
 
       <Card>
-        <CardHead title="Categories" />
+        <CardHead
+          title="Day-to-day"
+          action={onAddCategory && (
+            <CardAction onClick={onAddCategory}>
+              <svg viewBox="0 0 24 24" width={14} height={14} stroke="currentColor" strokeWidth={2.4}
+                   fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+              New
+            </CardAction>
+          )}
+        />
         {flex.length === 0
           ? <Empty icon="other" title="No categories yet" body="Add one to start tracking day-to-day spending." />
-          : flex.map((c) => {
+          : flex.map((c, i) => {
               const spent = d.byCategory.get(c.local_id) ?? 0;
               const pct = c.limit_minor > 0 ? (spent / c.limit_minor) * 100 : 0;
-              const st = statusOf(pct);
+              const cst = statusOf(pct);
               const remaining = c.limit_minor - spent;
               return (
-                <div key={c.local_id} style={{ padding: 'var(--s4) 0' }}>
+                <div key={c.local_id} style={{ padding: 'var(--s4) 0', borderTop: i ? '1px solid var(--line)' : undefined }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)', marginBottom: 'var(--s3)' }}>
                     <Icon name={c.icon} size={30} colour={c.colour} />
-                    <span style={{ flex: 1, fontSize: 'var(--fs-sm)', fontWeight: 700 }}>{c.name}</span>
-                    <span className="num" style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--text-dim)' }}>
-                      <strong style={{ color: 'var(--text)' }}>{money(spent, currency)}</strong> of {money(c.limit_minor, currency)}
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
+                    <span className="num" style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--text-dim)', flexShrink: 0 }}>
+                      <strong style={{ color: 'var(--text)' }}>{money(spent, currency)}</strong> of {money0(c.limit_minor, currency)}
                     </span>
                   </div>
-                  <Bar pct={pct} colour={STATUS_COLOUR[st]} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--s2)', fontSize: 'var(--fs-2xs)', fontWeight: 700 }}>
-                    <span className="num" style={{ color: st === 'ok' ? 'var(--text-dim)' : STATUS_COLOUR[st] }}>
+                  <Bar pct={pct} colour={STATUS_COLOUR[cst]} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--s3)', marginTop: 'var(--s2)', fontSize: 'var(--fs-2xs)', fontWeight: 700 }}>
+                    <span className="num" style={{ color: cst === 'ok' ? 'var(--text-dim)' : STATUS_COLOUR[cst] }}>
                       {money(Math.abs(remaining), currency)} {remaining >= 0 ? 'left' : 'over'}
                     </span>
                     <span className="num" style={{ color: 'var(--text-dim)' }}>{Math.round(pct)}%</span>
@@ -225,27 +478,77 @@ export function Budgets({ categories, d, currency, dayToDayMinor }: ScreenData):
               );
             })}
       </Card>
+
+      <Card>
+        <CardHead
+          title="Fixed costs"
+          action={
+            <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+              {money0(fixedCostsTotalMinor(bills), currency)} / month
+            </span>
+          }
+        />
+        {bills.length === 0
+          ? <Empty icon="bills" title="No fixed costs" body="Rent, bills and subscriptions will appear here." />
+          : bills.map((b, i) => (
+              <BillRow key={b.category.local_id} bill={b} currency={currency} now={now} divider={i > 0} showStatus />
+            ))}
+      </Card>
     </>
   );
 }
 
 /* ── Insights ─────────────────────────────────────────────────────────── */
 
-export function Insights({ categories, d, currency }: ScreenData): JSX.Element {
+export function Insights({ categories, transactions, d, currency, now }: ScreenData): JSX.Element {
   const rows = categoryBreakdown(d, categories);
+  const series = monthHistory(transactions, now, 6);
+  const maxMinor = Math.max(...series.map((m) => m.totalMinor), 1);
+  const avgMinor = historyAverageMinor(series);
+
   const stops = rows.length
-    ? rows.reduce<{ acc: number; parts: string[] }>((s, r) => {
-        const from = s.acc;
-        const to = s.acc + r.pct;
-        s.parts.push(`${r.category.colour} ${from}% ${to}%`);
-        return { acc: to, parts: s.parts };
+    ? rows.reduce<{ acc: number; parts: string[] }>((s2, r) => {
+        const from = s2.acc;
+        const to = s2.acc + r.pct;
+        s2.parts.push(`${r.category.colour} ${from}% ${to}%`);
+        return { acc: to, parts: s2.parts };
       }, { acc: 0, parts: [] }).parts.join(',')
     : '';
 
   return (
     <>
       <Card>
-        <CardHead title={`Where the money went`} />
+        <CardHead title="Spending, last 6 months" />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--s2)', height: 132, marginBottom: 'var(--s3)' }}>
+          {series.map((m) => (
+            <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+              <div style={{
+                width: '100%', minHeight: 3, borderRadius: 8,
+                height: `${(m.totalMinor / maxMinor) * 100}%`,
+                background: m.current ? 'var(--brand)' : 'var(--surface-3)',
+                transition: 'height .5s ease',
+              }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--s2)' }}>
+          {series.map((m) => (
+            <div key={m.label} style={{ flex: 1 }}>
+              <p style={{
+                fontSize: 'var(--fs-2xs)', fontWeight: 700, textAlign: 'center',
+                color: m.current ? 'var(--text)' : 'var(--text-dim)',
+              }}>{m.label}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--s3)', marginTop: 'var(--s4)', fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-dim)' }}>
+          <span className="num">Average {money0(avgMinor, currency)}</span>
+          <span className="num">{monthName(now)} so far {money(d.monthTotalMinor, currency)}</span>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHead title={`Where ${monthName(now)} went`} />
         {rows.length === 0
           ? <Empty icon="other" title="Nothing to chart yet" body="Add a transaction and this fills in." />
           : (
@@ -258,8 +561,8 @@ export function Insights({ categories, d, currency }: ScreenData): JSX.Element {
                   maskImage: 'radial-gradient(farthest-side,transparent 63%,#000 64%)',
                 }} />
                 <div style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center', textAlign: 'center' }}>
-                  <p className="num" style={{ fontSize: 'var(--fs-md)', fontWeight: 800 }}>{money(d.monthTotalMinor, currency)}</p>
-                  <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Total</p>
+                  <p className="num" style={{ fontSize: 'var(--fs-md)', fontWeight: 800, letterSpacing: '-.03em' }}>{money0(d.monthTotalMinor, currency)}</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginTop: 2 }}>Total</p>
                 </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--s3)', minWidth: 0 }}>
@@ -279,16 +582,20 @@ export function Insights({ categories, d, currency }: ScreenData): JSX.Element {
         <CardHead title="Key numbers" />
         {([
           ['Average day', `Day-to-day across ${d.dayOfMonth} ${d.dayOfMonth === 1 ? 'day' : 'days'}`, money(d.avgDayMinor, currency)],
-          ['Biggest single spend', d.biggest ? (d.biggest.merchant ?? 'Uncategorised') : 'Nothing yet', d.biggest ? money(d.biggest.amount_minor, currency) : '—'],
-          ['Spend-free days', 'So far this month', String(d.spendFreeDays)],
+          ['Biggest single spend',
+           d.biggest
+             ? `${catOf(categories, d.biggest.category_id)?.name ?? 'Uncategorised'} · ${dayLabel(d.biggest.occurred_at, now)}`
+             : 'Nothing yet',
+           d.biggest ? money(Math.abs(d.biggest.amount_minor), currency) : '—'],
+          ['Spend-free days', `So far in ${monthName(now)}`, String(d.spendFreeDays)],
           ['Fixed vs flexible', 'Share of the month locked in', `${Math.round(d.fixedSharePct)}%`],
-        ] as const).map(([k, sub, v]) => (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s3)', padding: 'var(--s3) 0', borderTop: '1px solid var(--line)' }}>
+        ] as const).map(([k, sub, v], i) => (
+          <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s3)', padding: 'var(--s3) 0', borderTop: i ? '1px solid var(--line)' : undefined }}>
             <div>
               <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 600 }}>{k}</p>
-              <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', marginTop: 2 }}>{sub}</p>
+              <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 500, marginTop: 2 }}>{sub}</p>
             </div>
-            <p className="num" style={{ fontSize: 'var(--fs-md)', fontWeight: 800 }}>{v}</p>
+            <p className="num" style={{ fontSize: 'var(--fs-md)', fontWeight: 800, flexShrink: 0 }}>{v}</p>
           </div>
         ))}
       </Card>
@@ -298,7 +605,13 @@ export function Insights({ categories, d, currency }: ScreenData): JSX.Element {
 
 /* ── Profile ──────────────────────────────────────────────────────────── */
 
-export function Profile({ categories, currency, displayName, dayToDayMinor, d, onSignOut }: ScreenData): JSX.Element {
+export function Profile({
+  categories, banks, transactions, currency, displayName, dayToDayMinor,
+  savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
+}: ScreenData): JSX.Element {
+  const initials = displayName.trim().split(/\s+/).slice(0, 2)
+    .map((w) => w[0] ?? '').join('').toUpperCase() || '?';
+
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s4)', padding: 'var(--s2) 0 var(--s5)' }}>
@@ -309,32 +622,85 @@ export function Profile({ categories, currency, displayName, dayToDayMinor, d, o
           <span style={{
             width: '100%', height: '100%', borderRadius: 'var(--r-pill)', background: 'var(--surface)',
             display: 'grid', placeItems: 'center', fontSize: 'var(--fs-xl)', fontWeight: 800,
-          }}>{displayName.slice(0, 1).toUpperCase()}</span>
+            letterSpacing: '-.03em', color: '#fff',
+          }}>{initials}</span>
         </div>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <p style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, letterSpacing: '-.03em' }}>{displayName}</p>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>
-            {money(dayToDayMinor, currency)} day-to-day
+            {monthName(now)} · {money0(dayToDayMinor, currency)} day-to-day
           </p>
         </div>
       </div>
 
       <Card>
-        <CardHead title="Categories" />
-        {categories.filter((c) => !c.deleted_at).map((c) => (
-          <div key={c.local_id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3) 0', borderTop: '1px solid var(--line)' }}>
-            <Icon name={c.icon} size={30} colour={c.colour} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700 }}>{c.name}</p>
-              <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', marginTop: 3 }}>
-                {c.is_fixed ? 'Fixed cost' : 'Day-to-day'} · {money(d.byCategory.get(c.local_id) ?? 0, currency)} used
-              </p>
-            </div>
-            <span className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-muted)' }}>
-              {money(c.limit_minor, currency)}
-            </span>
-          </div>
+        <CardHead title="Your month" />
+        <SettingRow
+          icon={<SettingIcon bg="var(--brand)" path="M3 10.5h18M6 6h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />}
+          name="Day-to-day budget" sub="Spending money, excluding fixed costs"
+          value={money0(dayToDayMinor, currency)}
+          onClick={onEditSetting && (() => onEditSetting('budget'))}
+        />
+        <SettingRow
+          divider
+          icon={<SettingIcon bg="var(--positive)" path="M4 11.5c0-3.6 3.6-6.5 8-6.5s8 2.9 8 6.5c0 2-1.1 3.8-2.8 5V19h-3v-1.6a11 11 0 0 1-4.4 0V19h-3v-2.5C5.1 15.3 4 13.5 4 11.5z" />}
+          name="Savings target" sub="What you aim to keep each month"
+          value={money0(savingsTargetMinor, currency)}
+          onClick={onEditSetting && (() => onEditSetting('savings'))}
+        />
+        <SettingRow
+          divider
+          icon={<SettingIcon bg="var(--brand-purple)" path="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" circle />}
+          name="Your name" sub="Shown on the home screen"
+          value={displayName}
+          onClick={onEditSetting && (() => onEditSetting('name'))}
+        />
+      </Card>
+
+      <Card>
+        <CardHead
+          title="Categories"
+          action={onEditCategory && (
+            <CardAction onClick={() => onEditCategory(null)}>
+              <PlusGlyph />New
+            </CardAction>
+          )}
+        />
+        {categories.filter((c) => !c.deleted_at).map((c, i) => (
+          <SettingRow
+            key={c.local_id}
+            divider={i > 0}
+            icon={<Icon name={c.icon} size={30} colour={c.colour} />}
+            name={c.name}
+            sub={`${c.is_fixed ? 'Fixed cost' : 'Day-to-day'} · ${money(d.byCategory.get(c.local_id) ?? 0, currency)} used`}
+            value={money0(c.limit_minor, currency)}
+            onClick={onEditCategory && (() => onEditCategory(c))}
+          />
         ))}
+      </Card>
+
+      <Card>
+        <CardHead
+          title="Banks & cards"
+          action={onEditBank && (
+            <CardAction onClick={() => onEditBank(null)}>
+              <PlusGlyph />New
+            </CardAction>
+          )}
+        />
+        {banks.filter((b) => !b.deleted_at).map((b, i) => {
+          const used = transactions.filter((t) => !t.deleted_at && t.bank_id === b.local_id).length;
+          return (
+            <SettingRow
+              key={b.local_id}
+              divider={i > 0}
+              icon={<SettingIcon bg={b.colour} path="M3 10.5h18M6 6h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />}
+              name={b.name}
+              sub={`${used} ${used === 1 ? 'transaction' : 'transactions'}`}
+              onClick={onEditBank && (() => onEditBank(b))}
+            />
+          );
+        })}
       </Card>
 
       {onSignOut && (
@@ -352,6 +718,66 @@ export function Profile({ categories, currency, displayName, dayToDayMinor, d, o
           </button>
         </Card>
       )}
+    </>
+  );
+}
+
+function PlusGlyph(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width={14} height={14} stroke="currentColor" strokeWidth={2.4}
+         fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+  );
+}
+
+function SettingIcon({ bg, path, circle }: { bg: string; path: string; circle?: boolean }): JSX.Element {
+  return (
+    <span aria-hidden style={{
+      width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center',
+      flexShrink: 0, color: '#fff', background: bg,
+    }}>
+      <svg viewBox="0 0 24 24" width={16} height={16} stroke="currentColor" strokeWidth={2}
+           fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {circle && <circle cx="12" cy="8.5" r="3.5" />}
+        <path d={path} />
+      </svg>
+    </span>
+  );
+}
+
+/**
+ * A tappable settings line. Renders as a real <button> only when it does
+ * something — a div that looks tappable but is not is worse than a plain row.
+ */
+function SettingRow({ icon, name, sub, value, onClick, divider }: {
+  icon: React.ReactNode; name: string; sub: string;
+  value?: string; onClick?: (() => void) | undefined; divider?: boolean;
+}): JSX.Element {
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <>
+      {divider && <div style={{ height: 1, background: 'var(--line)' }} />}
+      <Tag
+        {...(onClick ? { type: 'button' as const, onClick } : {})}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 'var(--s3)', width: '100%',
+          textAlign: 'left', padding: 'var(--s3) 0', background: 'none', border: 0,
+          borderRadius: 'var(--r-md)', color: 'inherit', cursor: onClick ? 'pointer' : 'default',
+        }}
+      >
+        {icon}
+        <span style={{ display: 'block', flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 700 }}>{name}</span>
+          <span style={{ display: 'block', fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>{sub}</span>
+        </span>
+        {value !== undefined && (
+          <span className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>{value}</span>
+        )}
+        {onClick && (
+          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden stroke="currentColor" strokeWidth={2.2}
+               fill="none" strokeLinecap="round" strokeLinejoin="round"
+               style={{ color: 'var(--text-dim)', flexShrink: 0 }}><path d="M9 5l7 7-7 7" /></svg>
+        )}
+      </Tag>
     </>
   );
 }

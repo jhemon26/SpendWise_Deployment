@@ -31,7 +31,7 @@ function cat(over: Partial<Category> = {}): Category {
     local_id: uuidv7(), server_id: null, created_at: NOW, updated_at: NOW, deleted_at: null,
     sync_status: 'pending', version: 0, device_id: 'd1',
     name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
-    is_fixed: false, ...over,
+    is_fixed: false, due_day: null, ...over,
   };
 }
 

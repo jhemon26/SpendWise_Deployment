@@ -64,6 +64,13 @@ export const categorySchema = syncEnvelopeSchema.extend({
   colour: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   limit_minor: z.number().int().nonnegative(),
   is_fixed: z.boolean().default(false),
+  /**
+   * Day of the month a fixed cost falls due, for the "Coming up" and "Fixed
+   * costs" lists. Null for day-to-day categories, which have no due date.
+   * 29-31 simply do not occur in shorter months; the UI clamps rather than
+   * inventing a date.
+   */
+  due_day: z.number().int().min(1).max(31).nullable().default(null),
 });
 export type Category = z.infer<typeof categorySchema>;
 

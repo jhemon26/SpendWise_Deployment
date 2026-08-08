@@ -33,6 +33,8 @@ export interface AppState {
   upsertCategory: (db: StorageAdapter, c: Partial<Category> & { name: string }) => Promise<Category>;
   removeCategory: (db: StorageAdapter, localId: string) => Promise<void>;
   setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'>>) => void;
+  upsertBank: (db: StorageAdapter, b: Partial<Bank> & { name: string }) => Promise<Bank>;
+  removeBank: (db: StorageAdapter, localId: string) => Promise<void>;
 }
 
 export interface NewTransaction {
@@ -63,16 +65,55 @@ function envelope(deviceId: string): Pick<
   };
 }
 
+/**
+ * Settings live on the device, not in the synced tables.
+ *
+ * They were previously held in memory only, so the name and budget collected
+ * during onboarding — and every later edit — vanished on the next reload.
+ */
+const SETTINGS_KEY = 'sw.settings';
+
+export type Settings = Pick<
+  AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'
+>;
+
+const DEFAULT_SETTINGS: Settings = {
+  dayToDayMinor: 82000,
+  savingsTargetMinor: 40800,
+  displayName: 'Jahid',
+  baseCurrency: 'GBP',
+};
+
+function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    return {
+      // Each field is checked on its own: a half-written or older blob must
+      // not take out the whole set.
+      dayToDayMinor: Number.isFinite(parsed.dayToDayMinor) ? parsed.dayToDayMinor as number : DEFAULT_SETTINGS.dayToDayMinor,
+      savingsTargetMinor: Number.isFinite(parsed.savingsTargetMinor) ? parsed.savingsTargetMinor as number : DEFAULT_SETTINGS.savingsTargetMinor,
+      displayName: typeof parsed.displayName === 'string' && parsed.displayName.trim() ? parsed.displayName : DEFAULT_SETTINGS.displayName,
+      baseCurrency: typeof parsed.baseCurrency === 'string' && parsed.baseCurrency.length === 3 ? parsed.baseCurrency : DEFAULT_SETTINGS.baseCurrency,
+    };
+  } catch {
+    // Private mode, quota, corrupt JSON — defaults are always usable.
+    return DEFAULT_SETTINGS;
+  }
+}
+
+export function clearSettings(): void {
+  try { localStorage.removeItem(SETTINGS_KEY); } catch { /* nothing to clear */ }
+}
+
 export const useApp = create<AppState>()((set, get) => ({
   ready: false,
   transactions: [],
   categories: [],
   banks: [],
   deviceId: 'web-device',
-  dayToDayMinor: 82000,
-  savingsTargetMinor: 40800,
-  displayName: 'Jahid',
-  baseCurrency: 'GBP',
+  ...loadSettings(),
 
   hydrate: async (db) => {
     const [transactions, categories, banks] = await Promise.all([
@@ -146,6 +187,7 @@ export const useApp = create<AppState>()((set, get) => ({
           colour: c.colour ?? '#6366F1',
           limit_minor: c.limit_minor ?? 0,
           is_fixed: c.is_fixed ?? false,
+          due_day: c.due_day ?? null,
         };
     await db.put('categories', rec);
     set({
@@ -166,5 +208,43 @@ export const useApp = create<AppState>()((set, get) => ({
     });
   },
 
-  setSettings: (p) => set(p),
+  setSettings: (p) => {
+    set(p);
+    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency } = get();
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency,
+      }));
+    } catch {
+      // Persisting is best-effort; the in-memory update already happened.
+    }
+  },
+
+  upsertBank: async (db, b) => {
+    const { deviceId } = get();
+    const existing = b.local_id ? get().banks.find((x) => x.local_id === b.local_id) : undefined;
+    const rec: Bank = existing
+      ? { ...existing, ...b, updated_at: nowIso(), sync_status: 'pending' }
+      : {
+          local_id: uuidv7(),
+          ...envelope(deviceId),
+          name: b.name,
+          colour: b.colour ?? '#6366F1',
+        };
+    await db.put('banks', rec);
+    set({
+      banks: existing
+        ? get().banks.map((x) => (x.local_id === rec.local_id ? rec : x))
+        : [...get().banks, rec],
+    });
+    return rec;
+  },
+
+  removeBank: async (db, localId) => {
+    const at = nowIso();
+    await db.softDelete('banks', localId, at);
+    // Transactions keep their bank_id; the row simply stops naming a bank
+    // rather than being rewritten, so nothing is lost if this is undone.
+    set({ banks: get().banks.filter((b) => b.local_id !== localId) });
+  },
 }));

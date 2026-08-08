@@ -36,6 +36,10 @@ export const ICONS: Readonly<Record<string, string>> = Object.freeze({
   savings: "<path d=\"M4 11.5c0-3.6 3.6-6.5 8-6.5s8 2.9 8 6.5c0 2-1.1 3.8-2.8 5V19h-3v-1.6a11 11 0 0 1-4.4 0V19h-3v-2.5C5.1 15.3 4 13.5 4 11.5z\"/><path d=\"M16.5 10h.01\"/>",
   income: "<path d=\"M12 4.5v15\"/><path d=\"M15.5 8.2c-.6-1.4-2-2.2-3.5-2.2-2 0-3.5 1-3.5 2.8s1.6 2.4 3.5 2.9 3.7 1.1 3.7 3-1.7 3-3.7 3c-1.7 0-3.2-.9-3.8-2.4\"/>",
   transfer: "<path d=\"M4 8.5h13\"/><path d=\"M14 5.5l3 3-3 3\"/><path d=\"M20 15.5H7\"/><path d=\"M10 12.5l-3 3 3 3\"/>",
+  // The fallback Icon() resolves to for any unknown key. It was missing from
+  // the port, so every unknown icon — and every empty state, which asks for
+  // "other" by name — rendered an empty <svg>: a blank coloured tile.
+  other: "<circle cx=\"6\" cy=\"12\" r=\"1.6\"/><circle cx=\"12\" cy=\"12\" r=\"1.6\"/><circle cx=\"18\" cy=\"12\" r=\"1.6\"/>",
 });
 
 export const ICON_KEYS = Object.keys(ICONS);

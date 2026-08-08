@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Transaction } from '@spendwise/shared-types';
-import { useApp } from '../core/store.js';
+import { toMinor, fromMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
+import { useApp, clearSettings } from '../core/store.js';
 import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
 import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
 import { AuthScreen } from '../features/auth/AuthScreen.js';
 import { Onboarding, type OnboardingResult } from '../features/onboarding/Onboarding.js';
 import { Tour } from '../features/onboarding/Tour.js';
+import { ValueEditor, CategoryEditor, BankEditor, type ValueEdit } from '../features/settings/Editors.js';
 import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
 import type { SyncEngine } from '../core/sync/engine.js';
-import { derive } from '../features/insights/selectors.js';
+import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
-import { Home, Activity, Budgets, Insights, Profile, type ScreenData } from './screens.js';
+import { Home, Activity, Budgets, Insights, Profile, type ScreenData, type TxFilter } from './screens.js';
 
 type Tab = 'home' | 'activity' | 'budgets' | 'insights' | 'profile';
 
@@ -50,8 +51,13 @@ export function App(): JSX.Element {
   // should be greeted, not dropped into an empty-looking app.
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem('sw.onboarded') === '1');
   const [showTour, setShowTour] = useState(false);
+  const [filter, setFilter] = useState<TxFilter>('all');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [valueEdit, setValueEdit] = useState<ValueEdit | null>(null);
+  // `undefined` means the editor is shut; `null` means it is open for a NEW one.
+  const [catEdit, setCatEdit] = useState<Category | null | undefined>(undefined);
+  const [bankEdit, setBankEdit] = useState<Bank | null | undefined>(undefined);
   const state = useApp();
 
   useEffect(() => {
@@ -112,6 +118,7 @@ export function App(): JSX.Element {
     // person's spending to whoever signs in next on this phone.
     await db.clear();
     localStorage.removeItem('sw.onboarded');
+    clearSettings();
     // Reload rather than resetting each store by hand: nothing in memory can
     // survive it, so there is no residue to forget about later.
     location.reload();
@@ -128,33 +135,79 @@ export function App(): JSX.Element {
   }
 
   const now = useMemo(() => new Date(), []);
+  // Scheduled fixed costs, not what has been paid — see MonthContext.
+  const fixedCostsMinor = useMemo(
+    () => fixedCostsTotalMinor(billsFor(state.categories, state.transactions, now)),
+    [state.categories, state.transactions, now],
+  );
   const d = useMemo(
     () => derive(state.transactions, state.categories, {
       now,
       dayToDayMinor: state.dayToDayMinor,
       savingsTargetMinor: state.savingsTargetMinor,
+      fixedCostsMinor,
     }),
-    [state.transactions, state.categories, state.dayToDayMinor, state.savingsTargetMinor, now],
+    [state.transactions, state.categories, state.dayToDayMinor, state.savingsTargetMinor, fixedCostsMinor, now],
   );
 
   const data: ScreenData = {
     transactions: state.transactions,
     categories: state.categories,
+    banks: state.banks,
     d,
     currency: state.baseCurrency,
     now,
     displayName: state.displayName,
     dayToDayMinor: state.dayToDayMinor,
+    savingsTargetMinor: state.savingsTargetMinor,
+    filter,
+    onFilter: setFilter,
+    onGoto: (t) => setTab(t),
     onEdit: (t: Transaction) => { setEditing(t); setSheetOpen(true); },
+    onEditSetting: (which) => {
+      const cur = state.baseCurrency;
+      if (which === 'name') {
+        setValueEdit({
+          kind: 'text', heading: 'Your name', value: state.displayName, currency: cur,
+          onSave: (raw) => state.setSettings({ displayName: raw }),
+        });
+        return;
+      }
+      const isBudget = which === 'budget';
+      setValueEdit({
+        kind: 'money',
+        heading: isBudget ? 'Day-to-day budget' : 'Savings target',
+        value: String(fromMinor(isBudget ? state.dayToDayMinor : state.savingsTargetMinor, cur)),
+        currency: cur,
+        onSave: (raw) => {
+          const minor = toMinor(raw, cur);
+          state.setSettings(isBudget ? { dayToDayMinor: minor } : { savingsTargetMinor: minor });
+        },
+      });
+    },
+    onEditCategory: (c) => setCatEdit(c),
+    onEditBank: (b) => setBankEdit(b),
+    onAddCategory: () => setCatEdit(null),
     // Running purely locally there is no session to end, so Profile hides it.
     ...(API_BASE && signedIn ? { onSignOut: () => { void signOut(); } } : {}),
   };
 
+  const monthLong = now.toLocaleDateString('en-GB', { month: 'long' });
+  const dayWord = d.daysLeft === 1 ? 'day' : 'days';
+  const monthTxCount = state.transactions.filter((t) => {
+    if (t.deleted_at) return false;
+    const at = new Date(t.occurred_at);
+    return at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth();
+  }).length;
+
   const title: Record<Tab, [string, string]> = {
-    home: [`Hi, ${state.displayName}`, now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })],
-    activity: ['Activity', `${state.transactions.filter((t) => !t.deleted_at).length} transactions`],
-    budgets: ['Budgets', `Resets in ${d.daysLeft} days`],
-    insights: ['Insights', 'This month'],
+    home: [
+      `Hi, ${state.displayName}`,
+      `${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · ${d.daysLeft} ${dayWord} left`,
+    ],
+    activity: ['Activity', `${monthTxCount} ${monthTxCount === 1 ? 'transaction' : 'transactions'} this month`],
+    budgets: ['Budgets', `${monthLong} · resets in ${d.daysLeft} ${dayWord}`],
+    insights: ['Insights', 'Last 6 months'],
     profile: ['Profile', 'Settings and categories'],
   };
 
@@ -267,6 +320,27 @@ export function App(): JSX.Element {
           setEditing(null);
         }}
       />
+
+      {valueEdit && <ValueEditor edit={valueEdit} onClose={() => setValueEdit(null)} />}
+
+      {catEdit !== undefined && (
+        <CategoryEditor
+          cat={catEdit}
+          currency={state.baseCurrency}
+          onClose={() => setCatEdit(undefined)}
+          onSave={(patch) => { void state.upsertCategory(db, patch); }}
+          onDelete={(localId) => { void state.removeCategory(db, localId); }}
+        />
+      )}
+
+      {bankEdit !== undefined && (
+        <BankEditor
+          bank={bankEdit}
+          onClose={() => setBankEdit(undefined)}
+          onSave={(patch) => { void state.upsertBank(db, patch); }}
+          onDelete={(localId) => { void state.removeBank(db, localId); }}
+        />
+      )}
 
       {showTour && <Tour onDone={() => { setShowTour(false); localStorage.setItem('sw.tour', '1'); }} />}
 

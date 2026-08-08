@@ -36,8 +36,12 @@ function envelope(): Pick<
 }
 
 export async function seedDemo(db: StorageAdapter): Promise<void> {
-  const cat = (name: string, icon: string, colour: string, limit: number, fixed = false): Category => ({
-    local_id: uuidv7(), ...envelope(), name, icon, colour, limit_minor: limit, is_fixed: fixed,
+  const cat = (
+    name: string, icon: string, colour: string, limit: number,
+    fixed = false, dueDay: number | null = null,
+  ): Category => ({
+    local_id: uuidv7(), ...envelope(), name, icon, colour,
+    limit_minor: limit, is_fixed: fixed, due_day: dueDay,
   });
 
   const categories: Category[] = [
@@ -47,49 +51,82 @@ export async function seedDemo(db: StorageAdapter): Promise<void> {
     cat('Transport', 'transport', '#22D3EE', 9000),
     cat('Fun', 'fun', '#EAB308', 8000),
     cat('Home', 'home', '#94A3B8', 11000),
-    cat('Rent', 'rent', '#8B5CF6', 90000, true),
-    cat('Car finance', 'car', '#6366F1', 15200, true),
+    cat('Rent', 'rent', '#8B5CF6', 90000, true, 1),
+    cat('Car finance', 'car', '#6366F1', 15200, true, 2),
+    cat('Car insurance', 'bills', '#64748B', 9500, true, 15),
+    cat('Gym membership', 'fitness', '#94A3B8', 3000, true, 10),
+    cat('Phone', 'phone', '#38BDF8', 2200, true, 20),
+    cat('Streaming', 'subscription', '#38BDF8', 1800, true, 22),
   ];
   const byName = (n: string): string => categories.find((c) => c.name === n)!.local_id;
 
   const banks: Bank[] = [
     { local_id: uuidv7(), ...envelope(), name: 'Monzo', colour: '#FF4D6A' },
     { local_id: uuidv7(), ...envelope(), name: 'Amex', colour: '#38BDF8' },
+    { local_id: uuidv7(), ...envelope(), name: 'Revolut', colour: '#A855F7' },
+    { local_id: uuidv7(), ...envelope(), name: 'Contactless', colour: '#22D3EE' },
+    { local_id: uuidv7(), ...envelope(), name: 'Direct Debit', colour: '#94A3B8' },
+    { local_id: uuidv7(), ...envelope(), name: 'Cash', colour: '#10B981' },
   ];
+  const byBank = (n: string): string => banks.find((b) => b.name === n)!.local_id;
 
   const tx = (
     ago: number, h: number, m: number, merchant: string,
-    category: string | null, amountMinor: number, income = false,
+    category: string | null, bank: string, amountMinor: number,
+    income = false, pending = false,
   ): Transaction => {
     const at = daysAgo(ago, h, m);
     return {
       local_id: uuidv7(), ...envelope(),
       category_id: category ? byName(category) : null,
-      bank_id: banks[0]!.local_id,
+      bank_id: byBank(bank),
       amount_minor: income ? Math.abs(amountMinor) : -Math.abs(amountMinor),
       currency: 'GBP',
       base_minor: income ? Math.abs(amountMinor) : -Math.abs(amountMinor),
       base_currency: 'GBP',
       fx_rate: 1, fx_rate_date: at.slice(0, 10), fx_provisional: false,
-      merchant, note: null, occurred_at: at, is_income: income, pending: false,
+      merchant, note: null, occurred_at: at, is_income: income, pending,
+    };
+  };
+
+  /**
+   * A spend in a completed month, for the Insights history bars. Day 14 keeps
+   * it clear of month boundaries in every month length.
+   */
+  const past = (monthsBack: number, merchant: string, category: string, amountMinor: number): Transaction => {
+    const t = now();
+    const at = new Date(t.getFullYear(), t.getMonth() - monthsBack, 14, 12, 0).toISOString();
+    return {
+      local_id: uuidv7(), ...envelope(),
+      category_id: byName(category), bank_id: byBank('Monzo'),
+      amount_minor: -Math.abs(amountMinor), currency: 'GBP',
+      base_minor: -Math.abs(amountMinor), base_currency: 'GBP',
+      fx_rate: 1, fx_rate_date: at.slice(0, 10), fx_provisional: false,
+      merchant, note: null, occurred_at: at, is_income: false, pending: false,
     };
   };
 
   const transactions: Transaction[] = [
-    tx(0, 12, 40, 'Pret A Manger', 'Eating out', 850),
-    tx(0, 9, 15, "Sainsbury's Local", 'Groceries', 1550),
-    tx(1, 17, 22, 'Uniqlo', 'Shopping', 2499),
-    tx(1, 19, 10, 'Tesco Express', 'Groceries', 840),
-    tx(1, 8, 4, 'TfL travel', 'Transport', 560),
-    tx(3, 9, 0, 'Salary', null, 244500, true),
-    tx(3, 19, 45, 'Deliveroo', 'Eating out', 2200),
-    tx(3, 20, 15, 'Odeon', 'Fun', 1200),
-    tx(4, 21, 3, 'Amazon', 'Shopping', 4000),
-    tx(4, 7, 50, 'Shell', 'Transport', 1620),
-    tx(4, 16, 0, 'Costa', 'Eating out', 1600),
-    tx(5, 6, 0, 'Car finance', 'Car finance', 15200),
-    tx(6, 6, 0, 'Rent', 'Rent', 90000),
-    tx(6, 11, 30, 'Waitrose', 'Groceries', 3410),
+    tx(0, 12, 40, 'Pret A Manger', 'Eating out', 'Amex', 850),
+    tx(0, 9, 15, "Sainsbury's Local", 'Groceries', 'Monzo', 1550),
+    tx(1, 17, 22, 'Uniqlo Oxford St', 'Shopping', 'Monzo', 2499),
+    tx(1, 19, 10, 'Tesco Express', 'Groceries', 'Monzo', 840),
+    tx(1, 8, 4, 'TfL travel', 'Transport', 'Contactless', 560, false, true),
+    tx(3, 9, 0, 'Salary', null, 'Monzo', 244500, true),
+    tx(3, 19, 45, 'Deliveroo', 'Eating out', 'Monzo', 2200),
+    tx(3, 20, 15, 'Odeon Greenwich', 'Fun', 'Amex', 1200),
+    tx(4, 21, 3, 'Amazon', 'Shopping', 'Amex', 4000),
+    tx(4, 7, 50, 'Shell Garage', 'Transport', 'Monzo', 1620),
+    tx(4, 16, 0, 'Costa Coffee', 'Eating out', 'Monzo', 1600),
+    tx(5, 6, 0, 'Car finance', 'Car finance', 'Direct Debit', 15200),
+    tx(6, 6, 0, 'Rent', 'Rent', 'Direct Debit', 90000),
+    tx(6, 11, 30, 'Waitrose', 'Groceries', 'Monzo', 3410),
+    // Five completed months so the Insights chart has a real trend to draw.
+    past(5, 'March spending', 'Rent', 214000),
+    past(4, 'April spending', 'Rent', 238000),
+    past(3, 'May spending', 'Rent', 192000),
+    past(2, 'June spending', 'Rent', 174500),
+    past(1, 'July spending', 'Rent', 196000),
   ];
 
   await db.bulkPut('categories', categories);

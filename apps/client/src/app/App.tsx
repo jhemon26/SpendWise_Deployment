@@ -185,7 +185,7 @@ export function App(): JSX.Element {
 
   return (
     <div style={{
-      minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)',
+      minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)',
       fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
       display: 'flex', flexDirection: 'column',
     }}>

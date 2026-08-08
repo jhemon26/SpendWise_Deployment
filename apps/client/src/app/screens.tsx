@@ -1,4 +1,4 @@
-import { formatMoney, type Category, type Transaction } from '@spendwise/shared-types';
+import { formatMoney, formatSignedMoney, type Category, type Transaction } from '@spendwise/shared-types';
 import { Bar, Card, CardHead, Chip, Empty, Gauge, Icon } from '../design-system/components.js';
 import {
   categoryBreakdown, derive, groupByDay, statusOf, STATUS_COLOUR, type Derived,
@@ -19,6 +19,8 @@ export interface ScreenData {
 }
 
 const money = (minor: number, cur: string): string => formatMoney(minor, cur);
+/** Use for anything that shows a +/− sign. See formatSignedMoney. */
+const signed = (minor: number, cur: string): string => formatSignedMoney(minor, cur);
 const catOf = (cats: Category[], id: string | null): Category | undefined =>
   id ? cats.find((c) => c.local_id === id) : undefined;
 
@@ -35,9 +37,9 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
       <div style={{
         position: 'relative', overflow: 'hidden', background: 'var(--hero-bg)',
         border: '1px solid var(--line-brand)', borderRadius: 'var(--r-xl)',
-        padding: 'var(--s5)', boxShadow: '0 16px 36px -14px rgba(0,0,0,.7)',
+        padding: 'var(--s4)', boxShadow: '0 16px 36px -14px rgba(0,0,0,.7)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--s4)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--s3)' }}>
           <p style={{
             fontSize: 'var(--fs-2xs)', fontWeight: 800, letterSpacing: '.08em',
             textTransform: 'uppercase', color: 'var(--brand-cyan)',
@@ -48,22 +50,22 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s4)' }}>
           <div style={{ minWidth: 0 }}>
             <p className="num" data-testid="safe-to-spend" data-tour="safe-to-spend" style={{
-              fontSize: 'var(--fs-hero)', fontWeight: 800, letterSpacing: '-.035em',
-              lineHeight: 1.05, color: d.leftMinor < 0 ? 'var(--danger)' : undefined,
+              fontSize: 'clamp(26px, 8.5vw, var(--fs-hero))', fontWeight: 800, letterSpacing: '-.035em',
+              lineHeight: 1.05, whiteSpace: 'nowrap', color: d.leftMinor < 0 ? 'var(--danger)' : undefined,
             }}>
-              {d.leftMinor < 0 ? '−' : ''}{money(d.leftMinor, currency)}
+              {money(d.leftMinor, currency)}
             </p>
             <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text-muted)', marginTop: 'var(--s2)' }}>
               <strong className="num" style={{ color: 'var(--text)' }}>{money(d.perDayMinor, currency)}</strong>
               {' '}a day for {d.daysLeft} {d.daysLeft === 1 ? 'day' : 'days'}
             </p>
           </div>
-          <Gauge pct={d.spentPct} datePct={d.datePct} colour={STATUS_COLOUR[st]} tourId="gauge" />
+          <Gauge pct={d.spentPct} datePct={d.datePct} colour={STATUS_COLOUR[st]} tourId="gauge" size={78} />
         </div>
 
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
-          marginTop: 'var(--s5)', paddingTop: 'var(--s4)', borderTop: '1px solid rgba(255,255,255,.07)',
+          marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
         }}>
           {([['Budget', money(dayToDayMinor, currency)],
              ['Spent', money(d.flexSpentMinor, currency)],
@@ -75,7 +77,7 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
           ))}
         </div>
 
-        <p style={{ marginTop: 'var(--s4)', fontSize: 'var(--fs-xs)', fontWeight: 700 }}>
+        <p style={{ marginTop: 'var(--s3)', fontSize: 'var(--fs-xs)', fontWeight: 700 }}>
           <span style={{ color: over ? 'var(--warning)' : 'var(--positive)' }}>
             {money(Math.abs(d.deltaMinor), currency)} {over ? 'over' : 'under'} pace
           </span>
@@ -86,7 +88,7 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
         <Tile label="Today" value={money(d.todaySpentMinor, currency)}
               foot={`${money(Math.abs(d.todaySpentMinor - d.evenPaceMinor), currency)} ${d.todaySpentMinor > d.evenPaceMinor ? 'over' : 'under'}`} />
         <Tile label="This month" value={money(d.monthTotalMinor, currency)} foot={`of ${money(dayToDayMinor + d.fixedSpentMinor, currency)}`} />
-        <Tile label="To save" value={`${d.projectedSavingsMinor < 0 ? '−' : ''}${money(d.projectedSavingsMinor, currency)}`}
+        <Tile label="To save" value={money(d.projectedSavingsMinor, currency)}
               foot={d.projectedSavingsMinor >= 0 ? 'on track' : 'over budget'}
               tone={d.projectedSavingsMinor >= 0 ? 'var(--positive)' : 'var(--danger)'} />
       </div>
@@ -138,7 +140,7 @@ function Row({ t, cats, onEdit }: { t: Transaction; cats: Category[]; onEdit?: (
         </p>
       </div>
       <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, color: t.is_income ? 'var(--positive)' : undefined }}>
-        {t.is_income ? '+' : '−'}{money(t.amount_minor, t.currency)}
+        {signed(t.is_income ? Math.abs(t.amount_minor) : -Math.abs(t.amount_minor), t.currency)}
       </p>
     </Tag>
   );
@@ -158,7 +160,7 @@ export function Activity({ transactions, categories, currency, now, onEdit }: Sc
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: 'var(--s4) 0 var(--s2)' }}>
             <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{g.label}</span>
             <span className="num" style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: g.netMinor > 0 ? 'var(--positive)' : 'var(--text-dim)' }}>
-              {g.netMinor > 0 ? '+' : '−'}{money(g.netMinor, currency)}
+              {signed(g.netMinor, currency)}
             </span>
           </div>
           <Card style={{ padding: 'var(--s1) var(--s4)' }}>

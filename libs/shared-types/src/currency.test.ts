@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  minorUnits,
-  toMinor,
-  fromMinor,
-  toDecimalString,
-  formatMoney,
-  convertMinor,
-  CurrencyError,
-} from './currency.js';
+import { CurrencyError, convertMinor, formatMoney, formatSignedMoney, fromMinor, minorUnits, toDecimalString, toMinor } from './currency.js';
 
 describe('minorUnits', () => {
   it('defaults to 2', () => {
@@ -166,5 +158,40 @@ describe('convertMinor', () => {
     expect(() => convertMinor(100, 'EUR', 'GBP', 0)).toThrow(CurrencyError);
     expect(() => convertMinor(100, 'EUR', 'GBP', -1)).toThrow(CurrencyError);
     expect(() => convertMinor(100, 'EUR', 'GBP', Number.NaN)).toThrow(CurrencyError);
+  });
+});
+
+describe('formatSignedMoney', () => {
+  // This exact string shipped to the phone: U+2212 from a hand-written prefix
+  // followed by U+002D from Intl. It rendered as two dashes that wrapped onto
+  // their own line and stretched the home card.
+  it('never emits two dash characters', () => {
+    const out = formatSignedMoney(-16729, 'GBP');
+    expect(out).not.toContain('−-');
+    expect([...out].filter((ch) => ch === '−' || ch === '-')).toHaveLength(1);
+  });
+
+  it('signs negatives with a real minus, not a hyphen', () => {
+    expect(formatSignedMoney(-16729, 'GBP')).toBe('−£167.29');
+  });
+
+  it('marks income with a plus', () => {
+    expect(formatSignedMoney(16729, 'GBP')).toBe('+£167.29');
+  });
+
+  it('leaves zero unsigned — "+£0.00" reads as a mistake', () => {
+    expect(formatSignedMoney(0, 'GBP')).toBe('£0.00');
+  });
+
+  it('respects minor units, so JPY keeps no decimals', () => {
+    // en-GB writes the yen as "JP¥", not "¥" — the assertion here is the
+    // absence of decimals, not the symbol.
+    expect(formatSignedMoney(-500, 'JPY')).toBe('−JP¥500');
+  });
+
+  // Guards the contract that made the bug possible: callers must NOT add their
+  // own sign, because formatMoney already does.
+  it('formatMoney signs negatives on its own', () => {
+    expect(formatMoney(-16729, 'GBP')).toBe('-£167.29');
   });
 });

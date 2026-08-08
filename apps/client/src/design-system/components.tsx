@@ -58,18 +58,20 @@ export function Gauge({
   colour,
   label = 'Used',
   tourId,
+  size = 96,
 }: {
   pct: number;
   datePct: number;
   colour: string;
   label?: string;
   tourId?: string | undefined;
+  size?: number;
 }): JSX.Element {
   const arc = arcFor(pct);
   const tick = tickFor(datePct);
   return (
-    <div data-tour={tourId} style={{ position: 'relative', width: 96, height: 96, flexShrink: 0, display: 'grid', placeItems: 'center' }}>
-      <svg viewBox="0 0 80 80" width={96} height={96} style={{ transform: 'rotate(-90deg)' }} role="img"
+    <div data-tour={tourId} style={{ position: 'relative', width: size, height: size, flexShrink: 0, display: 'grid', placeItems: 'center' }}>
+      <svg viewBox="0 0 80 80" width={size} height={size} style={{ transform: 'rotate(-90deg)' }} role="img"
            aria-label={`${Math.round(pct)} percent of budget used`}>
         <circle cx="40" cy="40" r="33" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={9} />
         <circle

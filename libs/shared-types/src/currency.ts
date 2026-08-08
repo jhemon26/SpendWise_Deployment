@@ -133,6 +133,26 @@ export function formatMoney(
 }
 
 /**
+ * Format a signed amount for display.
+ *
+ * formatMoney delegates to Intl.NumberFormat, which emits its OWN minus sign
+ * for negatives. Prefixing another one by hand yields "−-£167.29" — U+2212
+ * followed by U+002D, two different dash characters — which is what shipped on
+ * the home hero and on every spending day in Activity. Format the MAGNITUDE and
+ * let this add the sign, so there is one place that decides.
+ *
+ * Zero gets no sign: "+£0.00" and "−£0.00" both read as mistakes.
+ */
+export function formatSignedMoney(
+  minor: number,
+  code: CurrencyCode,
+  locale = 'en-GB',
+): string {
+  const sign = minor > 0 ? '+' : minor < 0 ? '\u2212' : '';
+  return sign + formatMoney(Math.abs(minor), code, locale);
+}
+
+/**
  * Convert between currencies at a given rate, returning minor units in the
  * target currency. Rounds half-up on the target's exponent.
  *

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 
 /**
  * Settings used to live in memory only, so the name and budget collected during
@@ -80,5 +80,31 @@ describe('settings persistence', () => {
     expect(mod.useApp.getState().displayName).toBe('Kai');
     expect(() => mod.clearSettings()).not.toThrow();
     Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true, writable: true });
+  });
+});
+
+describe('avatar', () => {
+  it('persists the chosen emoji and colour', () => {
+    mod.useApp.getState().setSettings({ avatarEmoji: '🦊', avatarColour: '#14B8A6' });
+    expect(read()).toMatchObject({ avatarEmoji: '🦊', avatarColour: '#14B8A6' });
+  });
+
+  it('discards a colour that is not a hex triplet on load', async () => {
+    // The value goes straight into an inline style, so junk must not survive.
+    // Settings are read at module-evaluation time, so this has to reset the
+    // module registry and import again — asserting on what we just wrote would
+    // pass whether or not the validation exists.
+    store.setItem(KEY, JSON.stringify({ avatarColour: 'red; background:url(javascript:1)' }));
+    vi.resetModules();
+    const reloaded = await import('./store.js') as StoreModule;
+    expect(reloaded.useApp.getState().avatarColour).toBe('#6366F1');
+  });
+
+  it('keeps a valid colour across a reload', async () => {
+    store.setItem(KEY, JSON.stringify({ avatarColour: '#14B8A6', avatarEmoji: '🐼' }));
+    vi.resetModules();
+    const reloaded = await import('./store.js') as StoreModule;
+    expect(reloaded.useApp.getState().avatarColour).toBe('#14B8A6');
+    expect(reloaded.useApp.getState().avatarEmoji).toBe('🐼');
   });
 });

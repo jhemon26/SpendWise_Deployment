@@ -21,22 +21,22 @@ export const DEFAULT_STEPS: TourStep[] = [
   {
     target: 'safe-to-spend',
     title: 'Your number for today',
-    body: 'What is left after the bills, divided by the days remaining. If this is healthy, you are fine.',
+    body: 'What’s left after bills, divided by the days remaining.',
   },
   {
     target: 'gauge',
     title: 'Are you ahead or behind?',
-    body: 'The ring is how much of the budget is gone. The white tick is where the calendar says you should be.',
+    body: 'The ring shows budget used. The white mark is where you should be today.',
   },
   {
     target: 'add',
     title: 'Add a spend in seconds',
-    body: 'Type the amount, pick a category. It saves instantly — even with no signal.',
+    body: 'Enter an amount and pick a category.',
   },
   {
     target: 'tabs',
     title: 'Everything else lives here',
-    body: 'Activity for the detail, Budgets to adjust limits, Insights for the month.',
+    body: 'Activity, Budgets and Insights.',
   },
 ];
 
@@ -138,7 +138,7 @@ export function Tour({ steps = DEFAULT_STEPS, onDone }: { steps?: TourStep[]; on
             onClick={() => (last ? onDone() : setI(i + 1))}
             style={{ flex: 2, minHeight: 46, borderRadius: 12, border: 0, background: 'var(--brand)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
           >
-            {last ? 'Start using SpendWise' : 'Next'}
+            {last ? 'Done' : 'Next'}
           </button>
         </div>
       </div>

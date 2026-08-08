@@ -25,6 +25,9 @@ export interface AppState {
   savingsTargetMinor: number;
   displayName: string;
   baseCurrency: string;
+  /** Emoji avatar; empty means fall back to initials. */
+  avatarEmoji: string;
+  avatarColour: string;
 
   hydrate: (db: StorageAdapter) => Promise<void>;
   addTransaction: (db: StorageAdapter, draft: NewTransaction) => Promise<Transaction>;
@@ -32,7 +35,7 @@ export interface AppState {
   removeTransaction: (db: StorageAdapter, localId: string) => Promise<void>;
   upsertCategory: (db: StorageAdapter, c: Partial<Category> & { name: string }) => Promise<Category>;
   removeCategory: (db: StorageAdapter, localId: string) => Promise<void>;
-  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'>>) => void;
+  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency' | 'avatarEmoji' | 'avatarColour'>>) => void;
   upsertBank: (db: StorageAdapter, b: Partial<Bank> & { name: string }) => Promise<Bank>;
   removeBank: (db: StorageAdapter, localId: string) => Promise<void>;
 }
@@ -75,6 +78,7 @@ const SETTINGS_KEY = 'sw.settings';
 
 export type Settings = Pick<
   AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'
+  | 'avatarEmoji' | 'avatarColour'
 >;
 
 const DEFAULT_SETTINGS: Settings = {
@@ -82,6 +86,9 @@ const DEFAULT_SETTINGS: Settings = {
   savingsTargetMinor: 40800,
   displayName: '',
   baseCurrency: 'GBP',
+  // Empty falls back to initials, so a new account is never a blank circle.
+  avatarEmoji: '',
+  avatarColour: '#6366F1',
 };
 
 function loadSettings(): Settings {
@@ -96,6 +103,9 @@ function loadSettings(): Settings {
       savingsTargetMinor: Number.isFinite(parsed.savingsTargetMinor) ? parsed.savingsTargetMinor as number : DEFAULT_SETTINGS.savingsTargetMinor,
       displayName: typeof parsed.displayName === 'string' && parsed.displayName.trim() ? parsed.displayName : DEFAULT_SETTINGS.displayName,
       baseCurrency: typeof parsed.baseCurrency === 'string' && parsed.baseCurrency.length === 3 ? parsed.baseCurrency : DEFAULT_SETTINGS.baseCurrency,
+      avatarEmoji: typeof parsed.avatarEmoji === 'string' ? parsed.avatarEmoji : DEFAULT_SETTINGS.avatarEmoji,
+      avatarColour: typeof parsed.avatarColour === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.avatarColour)
+        ? parsed.avatarColour : DEFAULT_SETTINGS.avatarColour,
     };
   } catch {
     // Private mode, quota, corrupt JSON — defaults are always usable.
@@ -210,10 +220,10 @@ export const useApp = create<AppState>()((set, get) => ({
 
   setSettings: (p) => {
     set(p);
-    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency } = get();
+    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour } = get();
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency,
+        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour,
       }));
     } catch {
       // Persisting is best-effort; the in-memory update already happened.

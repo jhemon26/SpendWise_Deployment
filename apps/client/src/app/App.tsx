@@ -7,14 +7,14 @@ import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
 import { AuthScreen } from '../features/auth/AuthScreen.js';
 import { Onboarding, type OnboardingResult } from '../features/onboarding/Onboarding.js';
 import { Tour } from '../features/onboarding/Tour.js';
-import { ValueEditor, CategoryEditor, BankEditor, type ValueEdit } from '../features/settings/Editors.js';
+import { ValueEditor, CategoryEditor, BankEditor, AvatarEditor, type ValueEdit } from '../features/settings/Editors.js';
 import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
 import type { SyncEngine } from '../core/sync/engine.js';
 import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
 import { Home, Activity, Budgets, Insights, Profile, type ScreenData, type TxFilter } from './screens.js';
-import { initialsOf, greetingFor } from '../design-system/components.js';
+import { Avatar, greetingFor } from '../design-system/components.js';
 
 type Tab = 'home' | 'activity' | 'budgets' | 'insights' | 'profile';
 
@@ -59,6 +59,7 @@ export function App(): JSX.Element {
   // `undefined` means the editor is shut; `null` means it is open for a NEW one.
   const [catEdit, setCatEdit] = useState<Category | null | undefined>(undefined);
   const [bankEdit, setBankEdit] = useState<Bank | null | undefined>(undefined);
+  const [avatarOpen, setAvatarOpen] = useState(false);
   const state = useApp();
 
   useEffect(() => {
@@ -201,6 +202,9 @@ export function App(): JSX.Element {
     onEditCategory: (c) => setCatEdit(c),
     onEditBank: (b) => setBankEdit(b),
     onAddCategory: () => setCatEdit(null),
+    onEditAvatar: () => setAvatarOpen(true),
+    avatarEmoji: state.avatarEmoji,
+    avatarColour: state.avatarColour,
     // Running purely locally there is no session to end, so Profile hides it.
     ...(API_BASE && signedIn ? { onSignOut: () => { void signOut(); } } : {}),
   };
@@ -268,15 +272,11 @@ export function App(): JSX.Element {
           onClick={() => setTab('profile')}
           aria-label="Profile and settings"
           style={{
-            width: 40, height: 40, borderRadius: 'var(--r-pill)', flexShrink: 0, padding: 2, border: 0,
-            background: 'linear-gradient(135deg,var(--brand-cyan),var(--brand),var(--brand-purple))',
-            cursor: 'pointer',
+            borderRadius: 'var(--r-pill)', flexShrink: 0, padding: 0, border: 0,
+            background: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center',
           }}
         >
-          <span style={{
-            width: '100%', height: '100%', borderRadius: 'var(--r-pill)', background: 'var(--surface)',
-            color: '#fff', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-sm)', fontWeight: 800,
-          }}>{initialsOf(state.displayName)}</span>
+          <Avatar emoji={state.avatarEmoji} colour={state.avatarColour} name={state.displayName} size={40} />
         </button>
       </header>
 
@@ -352,6 +352,16 @@ export function App(): JSX.Element {
           onClose={() => setBankEdit(undefined)}
           onSave={(patch) => { void state.upsertBank(db, patch); }}
           onDelete={(localId) => { void state.removeBank(db, localId); }}
+        />
+      )}
+
+      {avatarOpen && (
+        <AvatarEditor
+          emoji={state.avatarEmoji}
+          colour={state.avatarColour}
+          name={state.displayName}
+          onClose={() => setAvatarOpen(false)}
+          onSave={({ emoji, colour }) => state.setSettings({ avatarEmoji: emoji, avatarColour: colour })}
         />
       )}
 

@@ -136,14 +136,14 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           <img src="/icon-192.png" alt="" width={60} height={60} style={mark} />
           <h1 style={headline}>
             {stage === 'code' ? 'Enter your code'
-              : stage === 'phone' ? 'Sign in to SpendWise'
-                : 'Know what you can spend'}
+              : stage === 'phone' ? 'Your mobile number'
+                : 'Sign in to SpendWise'}
           </h1>
           <p style={subhead}>
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
-              : stage === 'phone' ? 'Enter your mobile number and we’ll text you a code.'
-                : 'Track every penny. Works with no signal.'}
+              : stage === 'phone' ? 'We’ll text you a code.'
+                : 'Choose how you’d like to continue.'}
           </p>
         </header>
 
@@ -257,7 +257,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
           </svg>
-          No passwords. Your data stays on this device first.
+          Secure, passwordless sign-in.
         </p>
       </section>
     </main>

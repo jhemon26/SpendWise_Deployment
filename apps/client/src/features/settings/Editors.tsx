@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Bank, Category } from '@spendwise/shared-types';
 import { toMinor, fromMinor, formatMoney } from '@spendwise/shared-types';
 import { ICON_KEYS, ICONS } from '../../design-system/icons.js';
+import { AVATAR_EMOJI, Avatar } from '../../design-system/components.js';
 
 /**
  * The prototype's editing sheets, ported.
@@ -356,6 +357,78 @@ export function BankEditor({ bank, onSave, onDelete, onClose }: {
           Delete
         </button>
       )}
+    </Scrim>
+  );
+}
+
+/* ── avatar ────────────────────────────────────────────────────────────── */
+
+export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
+  emoji: string; colour: string; name: string;
+  onSave: (next: { emoji: string; colour: string }) => void;
+  onClose: () => void;
+}): JSX.Element {
+  const [pick, setPick] = useState(emoji);
+  const [tint, setTint] = useState(colour);
+
+  return (
+    <Scrim onClose={onClose}>
+      <p style={title}>Choose your look</p>
+
+      <div style={{ display: 'grid', placeItems: 'center', marginBottom: 'var(--s4)' }}>
+        <Avatar emoji={pick} colour={tint} name={name} size={72} />
+      </div>
+
+      <div role="group" aria-label="Avatar" style={{
+        display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 'var(--s2)',
+        maxHeight: 210, overflowY: 'auto', padding: 2,
+      }}>
+        {AVATAR_EMOJI.map((e) => (
+          <button
+            key={e}
+            type="button"
+            aria-pressed={pick === e}
+            aria-label={e}
+            onClick={() => setPick(e)}
+            style={{
+              aspectRatio: '1', borderRadius: 'var(--r-md)', cursor: 'pointer',
+              display: 'grid', placeItems: 'center', fontSize: 22, lineHeight: 1,
+              background: pick === e ? 'var(--brand-soft)' : 'var(--surface-2)',
+              border: `1.5px solid ${pick === e ? 'var(--line-brand)' : 'transparent'}`,
+            }}
+          >{e}</button>
+        ))}
+      </div>
+
+      <p style={label}>Background</p>
+      <div role="group" aria-label="Background colour" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s2)' }}>
+        {PALETTE.map((c) => (
+          <button
+            key={c}
+            type="button"
+            aria-pressed={tint === c}
+            aria-label={c}
+            onClick={() => setTint(c)}
+            style={{
+              width: 34, height: 34, borderRadius: 'var(--r-pill)', display: 'grid', placeItems: 'center',
+              background: 'none', cursor: 'pointer',
+              border: `2.5px solid ${tint === c ? 'var(--text)' : 'transparent'}`,
+              transform: tint === c ? 'scale(1.06)' : undefined,
+            }}
+          >
+            <i style={{ width: 22, height: 22, borderRadius: 'var(--r-pill)', background: c }} />
+          </button>
+        ))}
+      </div>
+
+      <div style={btnRow}>
+        <button type="button" style={ghost} onClick={() => { onSave({ emoji: '', colour: tint }); onClose(); }}>
+          Use initials
+        </button>
+        <button type="button" style={primary} onClick={() => { onSave({ emoji: pick, colour: tint }); onClose(); }}>
+          Save
+        </button>
+      </div>
     </Scrim>
   );
 }

@@ -150,22 +150,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
           <div style={card}>
             <img src="/icon-192.png" alt="" width={72} height={72} style={{ borderRadius: 20, marginBottom: 'var(--s4)' }} />
             <h1 style={h1}>Welcome to SpendWise</h1>
-            <p style={lede}>
-              Three quick questions and your budget is ready. It takes about a minute,
-              and you can change any of it later.
-            </p>
-            <ul style={list}>
-              {[
-                ['Know what you can spend today', 'Not just what you spent last month.'],
-                ['Works with no signal', 'Everything saves on your phone first.'],
-                ['Private by default', 'No bank logins, no adverts, no tracking.'],
-              ].map(([t, s]) => (
-                <li key={t} style={listItem}>
-                  <span style={tick}>✓</span>
-                  <span><b style={{ display: 'block' }}>{t}</b><span style={{ color: 'var(--text-dim)' }}>{s}</span></span>
-                </li>
-              ))}
-            </ul>
+            <p style={lede}>A few quick questions to set up your budget.</p>
             <button type="button" onClick={next} style={primary(false)}>Get started</button>
             <button type="button" onClick={onSkip} style={ghost}>Skip for now</button>
           </div>
@@ -174,8 +159,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {/* ── 1. name ────────────────────────────────────────────────── */}
         {step === 1 && (
           <div style={card}>
-            <h1 style={h1}>What should we call you?</h1>
-            <p style={lede}>Just so the app feels like yours. First name is plenty.</p>
+            <h1 style={h1}>What's your name?</h1>
+            <p style={lede}>First name is fine.</p>
             <input
               autoFocus value={name} onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
@@ -190,11 +175,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {/* ── 2. earnings ────────────────────────────────────────────── */}
         {step === 2 && (
           <div style={card}>
-            <h1 style={h1}>What comes in each month?</h1>
-            <p style={lede}>
-              Take-home pay, after tax. This is only used to work out what is safe to
-              spend — it never leaves your device unencrypted.
-            </p>
+            <h1 style={h1}>Monthly income</h1>
+            <p style={lede}>Your take-home pay, after tax.</p>
 
             <div style={segRow} role="group" aria-label="Currency">
               {CURRENCIES.map((c) => (
@@ -218,7 +200,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
             </div>
 
             <button type="button" onClick={next} style={primary(false)}>Continue</button>
-            <button type="button" onClick={next} style={ghost}>I'd rather not say</button>
+            <button type="button" onClick={next} style={ghost}>Skip</button>
           </div>
         )}
 
@@ -226,7 +208,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {step === 3 && (
           <div style={card}>
             <h1 style={h1}>What do you spend on?</h1>
-            <p style={lede}>Pick the ones that matter. You can add more any time.</p>
+            <p style={lede}>Pick the ones you use.</p>
             <div style={grid}>
               {SUGGESTED.map((c) => {
                 const on = chosen.includes(c.name);
@@ -252,11 +234,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {step === 4 && (
           <div style={card}>
             <h1 style={h1}>How much for each?</h1>
-            <p style={lede}>
-              {incomeMinor > 0
-                ? 'Starting points based on what you earn. Adjust anything that looks wrong.'
-                : 'Set a monthly limit for each. Leave any at zero to just track it.'}
-            </p>
+            <p style={lede}>Set a monthly limit for each.</p>
 
             <div style={{ display: 'grid', gap: 10, marginBottom: 'var(--s4)' }}>
               {chosen.map((n) => {
@@ -287,8 +265,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
             {incomeMinor > 0 && (
               <p style={{ ...hint, marginBottom: 'var(--s3)' }}>
                 {totalBudget > incomeMinor
-                  ? `That's more than you earn — ${formatMoney(totalBudget - incomeMinor, currency)} over.`
-                  : `Leaves ${formatMoney(incomeMinor - totalBudget, currency)} for bills and saving.`}
+                  ? `${formatMoney(totalBudget - incomeMinor, currency)} over your income.`
+                  : `${formatMoney(incomeMinor - totalBudget, currency)} left for bills and saving.`}
               </p>
             )}
 
@@ -300,11 +278,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {/* ── 5. fixed costs ─────────────────────────────────────────── */}
         {step === 5 && (
           <div style={card}>
-            <h1 style={h1}>What has to be paid?</h1>
-            <p style={lede}>
-              Rent, bills, subscriptions — money that is spoken for before you spend
-              anything. Keeping these separate is what makes “safe to spend” honest.
-            </p>
+            <h1 style={h1}>Bills and fixed costs</h1>
+            <p style={lede}>Regular payments, kept separate from your spending money.</p>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 'var(--s2) 0 var(--s3)' }}>
               {FIXED_SUGGESTED.map((f) => {
@@ -335,28 +310,37 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
                 {fixedChosen.map((n) => {
                   const c = FIXED_SUGGESTED.find((f) => f.name === n)!;
                   return (
-                    <div key={n} style={budgetRow}>
+                    <div key={n} style={fixedRow}>
                       <Icon name={c.icon} size={30} colour={c.colour} />
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700 }}>{c.name}</span>
-                      <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>
-                        {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                      <span style={{ minWidth: 0, fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.name}
                       </span>
-                      <input
-                        inputMode="decimal"
-                        value={fixedAmounts[n] ?? ''}
-                        onChange={(e) => setFixedAmounts((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                        placeholder="0"
-                        aria-label={`${n} monthly amount`}
-                        style={budgetInput}
-                      />
-                      <span style={{ color: 'var(--text-dim)', fontSize: 12, fontWeight: 700 }}>on</span>
-                      <input
-                        inputMode="numeric"
-                        value={fixedDays[n] ?? String(c.dueDay)}
-                        onChange={(e) => setFixedDays((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))}
-                        aria-label={`${n} due day`}
-                        style={{ ...budgetInput, width: 34, textAlign: 'center' }}
-                      />
+                      <label style={miniField}>
+                        <span style={miniLabel}>Amount</span>
+                        <span style={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+                            {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                          </span>
+                          <input
+                            inputMode="decimal"
+                            value={fixedAmounts[n] ?? ''}
+                            onChange={(e) => setFixedAmounts((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                            placeholder="0"
+                            aria-label={`${n} monthly amount`}
+                            style={miniInput}
+                          />
+                        </span>
+                      </label>
+                      <label style={miniField}>
+                        <span style={miniLabel}>Day</span>
+                        <input
+                          inputMode="numeric"
+                          value={fixedDays[n] ?? String(c.dueDay)}
+                          onChange={(e) => setFixedDays((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))}
+                          aria-label={`${n} due day`}
+                          style={{ ...miniInput, width: 26, textAlign: 'center' }}
+                        />
+                      </label>
                     </div>
                   );
                 })}
@@ -370,8 +354,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
             {incomeMinor > 0 && (
               <p style={{ ...hint, marginBottom: 'var(--s3)' }}>
                 {totalFixed + totalBudget > incomeMinor
-                  ? `Bills and budget come to ${formatMoney(totalFixed + totalBudget - incomeMinor, currency)} more than you earn.`
-                  : `Leaves ${formatMoney(incomeMinor - totalFixed - totalBudget, currency)} to save each month.`}
+                  ? `${formatMoney(totalFixed + totalBudget - incomeMinor, currency)} over your income.`
+                  : `${formatMoney(incomeMinor - totalFixed - totalBudget, currency)} left to save each month.`}
               </p>
             )}
 
@@ -410,12 +394,6 @@ const card: React.CSSProperties = {
 };
 const h1: React.CSSProperties = { fontSize: 25, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15 };
 const lede: React.CSSProperties = { fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.55 };
-const list: React.CSSProperties = { display: 'grid', gap: 'var(--s3)', listStyle: 'none', margin: 'var(--s2) 0 var(--s3)' };
-const listItem: React.CSSProperties = { display: 'flex', gap: 12, fontSize: 'var(--fs-sm)', lineHeight: 1.45 };
-const tick: React.CSSProperties = {
-  width: 22, height: 22, flexShrink: 0, borderRadius: 999, display: 'grid', placeItems: 'center',
-  background: 'rgba(16,185,129,.16)', color: 'var(--positive)', fontSize: 12, fontWeight: 800,
-};
 const field: React.CSSProperties = {
   width: '100%', background: 'var(--surface-2)', border: '1px solid var(--line)',
   borderRadius: 'var(--r-md)', padding: '16px var(--s4)', fontSize: 17, fontWeight: 600, color: 'var(--text)', outline: 'none',
@@ -434,13 +412,28 @@ const amountInput: React.CSSProperties = {
   background: 'none', border: 0, outline: 'none', fontSize: 46, fontWeight: 800,
   letterSpacing: '-.04em', fontVariantNumeric: 'tabular-nums', color: 'var(--text)', minWidth: '1ch', padding: 0,
 };
-const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 };
+const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 };
 const cell = (on: boolean): React.CSSProperties => ({
   display: 'grid', justifyItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 16, cursor: 'pointer',
   background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
   border: `1.5px solid ${on ? 'rgba(99,102,241,.55)' : 'transparent'}`,
   color: on ? 'var(--text)' : 'var(--text-dim)',
 });
+/** Fixed columns: a flex row with fixed-width inputs overflowed the card. */
+const fixedRow: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: '30px minmax(0,1fr) auto auto',
+  alignItems: 'center', gap: 10, padding: '10px 12px',
+  background: 'var(--surface-2)', borderRadius: 14,
+};
+const miniField: React.CSSProperties = { display: 'grid', gap: 2, justifyItems: 'end' };
+const miniLabel: React.CSSProperties = {
+  fontSize: 9, fontWeight: 700, letterSpacing: '.06em',
+  textTransform: 'uppercase', color: 'var(--text-dim)',
+};
+const miniInput: React.CSSProperties = {
+  width: 58, textAlign: 'right', background: 'transparent', border: 0, outline: 'none',
+  fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: 'var(--text)', padding: 0,
+};
 const budgetRow: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
   background: 'var(--surface-2)', borderRadius: 14,

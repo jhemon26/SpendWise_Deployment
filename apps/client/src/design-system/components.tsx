@@ -195,3 +195,37 @@ export function initialsOf(name: string): string {
 /** The greeting falls back; the stored name does not. */
 export const greetingFor = (name: string): string =>
   name.trim() ? `Hi, ${name.trim()}` : 'Hi there';
+
+/**
+ * Profile avatar.
+ *
+ * An emoji if one has been chosen, otherwise initials — never an empty circle.
+ * Emoji are used deliberately over bundled artwork: they render at any size,
+ * cost nothing to ship, and already cover the "something chill" range people
+ * actually want.
+ */
+export function Avatar({ emoji, colour, name, size = 40 }: {
+  emoji: string; colour: string; name: string; size?: number;
+}): JSX.Element {
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: 'var(--r-pill)', flexShrink: 0,
+      display: 'grid', placeItems: 'center',
+      background: emoji ? colour : 'var(--surface)',
+      // Keep the gradient ring when there is no emoji, so the fallback still
+      // looks intentional rather than unstyled.
+      boxShadow: emoji ? 'none' : `0 0 0 2px ${colour}`,
+      fontSize: Math.round(size * 0.52), lineHeight: 1,
+      color: '#fff', fontWeight: 800, letterSpacing: '-.02em',
+    }}>
+      {emoji || initialsOf(name)}
+    </span>
+  );
+}
+
+/** Chill, non-corporate, and legible at 20px. */
+export const AVATAR_EMOJI = [
+  '🐱', '🐶', '🦊', '🐼', '🐨', '🦁', '🐯', '🐸',
+  '🐧', '🦉', '🐢', '🐙', '🦄', '🐝', '🦋', '🐬',
+  '🦜', '🐰', '🌵', '🍀', '🌙', '⭐', '🔥', '🚀',
+];

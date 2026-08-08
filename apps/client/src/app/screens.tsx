@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { formatMoney, formatSignedMoney, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
-import { Bar, Card, CardHead, Chip, Empty, Gauge, Icon, initialsOf } from '../design-system/components.js';
+import { Avatar, Bar, Card, CardHead, Chip, Empty, Gauge, Icon } from '../design-system/components.js';
 import {
   billsFor, categoryBreakdown, dayLabel, derive, fixedCostsTotalMinor, groupByDay,
   historyAverageMinor, monthHistory, statusOf, STATUS_COLOUR,
@@ -31,6 +32,9 @@ export interface ScreenData {
   /** null opens the editor empty, for a new one. */
   onEditCategory?: ((c: Category | null) => void) | undefined;
   onEditBank?: ((b: Bank | null) => void) | undefined;
+  onEditAvatar?: (() => void) | undefined;
+  avatarEmoji?: string | undefined;
+  avatarColour?: string | undefined;
 }
 
 export type TxFilter = 'all' | 'spending' | 'income' | 'bills';
@@ -620,37 +624,60 @@ export function Insights({ categories, transactions, d, currency, now }: ScreenD
 export function Profile({
   categories, banks, transactions, currency, displayName, dayToDayMinor,
   savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
+  onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1',
 }: ScreenData): JSX.Element {
-  const initials = initialsOf(displayName);
+  const flex = categories.filter((c) => !c.deleted_at && !c.is_fixed);
+  const fixed = categories.filter((c) => !c.deleted_at && c.is_fixed);
+  const liveBanks = banks.filter((b) => !b.deleted_at);
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s4)', padding: 'var(--s2) 0 var(--s5)' }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: 'var(--r-pill)', padding: 2.5, flexShrink: 0,
-          background: 'linear-gradient(135deg,var(--brand-cyan),var(--brand),var(--brand-purple))',
-        }}>
-          <span style={{
-            width: '100%', height: '100%', borderRadius: 'var(--r-pill)', background: 'var(--surface)',
-            display: 'grid', placeItems: 'center', fontSize: 'var(--fs-xl)', fontWeight: 800,
-            letterSpacing: '-.03em', color: '#fff',
-          }}>{initials}</span>
+      {/* You ─ identity only. Money and lists live in their own sections so
+          this card stays a single glance. */}
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s4)' }}>
+          <button
+            type="button"
+            onClick={onEditAvatar}
+            aria-label="Change your avatar"
+            style={{ background: 'none', border: 0, padding: 0, cursor: onEditAvatar ? 'pointer' : 'default', position: 'relative' }}
+          >
+            <Avatar emoji={avatarEmoji} colour={avatarColour} name={displayName} size={62} />
+            {onEditAvatar && (
+              <span aria-hidden style={{
+                position: 'absolute', right: -2, bottom: -2, width: 22, height: 22,
+                borderRadius: 999, background: 'var(--brand)', color: '#fff',
+                display: 'grid', placeItems: 'center', border: '2px solid var(--surface)',
+              }}>
+                <svg viewBox="0 0 24 24" width={11} height={11} stroke="currentColor" strokeWidth={3}
+                     fill="none" strokeLinecap="round"><path d="M4 20h4L20 8l-4-4L4 16z" /></svg>
+              </span>
+            )}
+          </button>
+
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, letterSpacing: '-.03em', color: displayName.trim() ? undefined : 'var(--text-dim)' }}>
+              {displayName.trim() || 'Add your name'}
+            </p>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>
+              {monthName(now)} · {money0(dayToDayMinor, currency)} day-to-day
+            </p>
+          </div>
+
+          {onEditSetting && (
+            <button type="button" onClick={() => onEditSetting('name')} aria-label="Edit your name"
+                    style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-pill)', padding: '8px 14px', cursor: 'pointer', fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>
+              Edit
+            </button>
+          )}
         </div>
-        <div style={{ minWidth: 0 }}>
-          <p style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, letterSpacing: '-.03em', color: displayName.trim() ? undefined : 'var(--text-dim)' }}>
-            {displayName.trim() || 'Add your name'}
-          </p>
-          <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>
-            {monthName(now)} · {money0(dayToDayMinor, currency)} day-to-day
-          </p>
-        </div>
-      </div>
+      </Card>
 
       <Card>
-        <CardHead title="Your month" />
+        <CardHead title="Your money" />
         <SettingRow
           icon={<SettingIcon bg="var(--brand)" path="M3 10.5h18M6 6h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />}
-          name="Day-to-day budget" sub="Spending money, excluding fixed costs"
+          name="Day-to-day budget" sub="Your monthly spending money"
           value={money0(dayToDayMinor, currency)}
           onClick={onEditSetting && (() => onEditSetting('budget'))}
         />
@@ -661,67 +688,43 @@ export function Profile({
           value={money0(savingsTargetMinor, currency)}
           onClick={onEditSetting && (() => onEditSetting('savings'))}
         />
-        <SettingRow
-          divider
-          icon={<SettingIcon bg="var(--brand-purple)" path="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" circle />}
-          name="Your name" sub="Shown on the home screen"
-          value={displayName}
-          onClick={onEditSetting && (() => onEditSetting('name'))}
-        />
       </Card>
 
-      {/* Split into the two pots rather than one flat list. The distinction
-          drives every figure on Home, so seeing which bucket a category is in
-          — and being able to move it — has to be obvious, not buried in an
-          editor the user has to open to find out. */}
-      {([
-        ['Day-to-day', false, 'Comes out of your spending money'],
-        ['Fixed costs', true, 'Committed before you spend anything'],
-      ] as const).map(([heading, fixed, blurb]) => {
-        const rows = categories.filter((c) => !c.deleted_at && c.is_fixed === fixed);
-        return (
-          <Card key={heading}>
-            <CardHead
-              title={heading}
-              action={onEditCategory && (
-                <CardAction onClick={() => onEditCategory(null)}>
-                  <PlusGlyph />New
-                </CardAction>
-              )}
-            />
-            {rows.length === 0
-              ? (
-                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600 }}>
-                  Nothing here yet. {blurb}.
-                </p>
-              )
-              : rows.map((c, i) => (
-                <SettingRow
-                  key={c.local_id}
-                  divider={i > 0}
-                  icon={<Icon name={c.icon} size={30} colour={c.colour} />}
-                  name={c.name}
-                  sub={fixed
-                    ? `${c.due_day ? `Due on the ${ordinal(c.due_day)}` : 'No due day set'} · ${money(d.byCategory.get(c.local_id) ?? 0, currency)} paid`
-                    : `${money(d.byCategory.get(c.local_id) ?? 0, currency)} of ${money0(c.limit_minor, currency)} used`}
-                  value={money0(c.limit_minor, currency)}
-                  onClick={onEditCategory && (() => onEditCategory(c))}
-                />
-              ))}
-          </Card>
-        );
-      })}
+      {/* Collapsed by default. Three open lists filled the screen and buried
+          sign-out; the counts carry the information without the height. */}
+      <Section title="Day-to-day categories" count={flex.length}
+               onAdd={onEditCategory && (() => onEditCategory(null))}>
+        {flex.map((c, i) => (
+          <SettingRow
+            key={c.local_id}
+            divider={i > 0}
+            icon={<Icon name={c.icon} size={30} colour={c.colour} />}
+            name={c.name}
+            sub={`${money(d.byCategory.get(c.local_id) ?? 0, currency)} of ${money0(c.limit_minor, currency)} used`}
+            value={money0(c.limit_minor, currency)}
+            onClick={onEditCategory && (() => onEditCategory(c))}
+          />
+        ))}
+      </Section>
 
-      <Card>
-        <CardHead
-          title="Banks & cards"
-          action={onEditBank && (
-            <CardAction onClick={() => onEditBank(null)}>
-              <PlusGlyph />New
-            </CardAction>
-          )}
-        />
-        {banks.filter((b) => !b.deleted_at).map((b, i) => {
+      <Section title="Fixed costs" count={fixed.length}
+               onAdd={onEditCategory && (() => onEditCategory(null))}>
+        {fixed.map((c, i) => (
+          <SettingRow
+            key={c.local_id}
+            divider={i > 0}
+            icon={<Icon name={c.icon} size={30} colour={c.colour} />}
+            name={c.name}
+            sub={c.due_day ? `Due on the ${ordinal(c.due_day)}` : 'No due day set'}
+            value={money0(c.limit_minor, currency)}
+            onClick={onEditCategory && (() => onEditCategory(c))}
+          />
+        ))}
+      </Section>
+
+      <Section title="Banks & cards" count={liveBanks.length}
+               onAdd={onEditBank && (() => onEditBank(null))}>
+        {liveBanks.map((b, i) => {
           const used = transactions.filter((t) => !t.deleted_at && t.bank_id === b.local_id).length;
           return (
             <SettingRow
@@ -734,7 +737,7 @@ export function Profile({
             />
           );
         })}
-      </Card>
+      </Section>
 
       {onSignOut && (
         <Card>
@@ -752,6 +755,48 @@ export function Profile({
         </Card>
       )}
     </>
+  );
+}
+
+/** A card that opens on tap. Closed it costs one row; open it is a full list. */
+function Section({ title, count, onAdd, children }: {
+  title: string; count: number; onAdd?: (() => void) | undefined; children: React.ReactNode;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card style={{ padding: 'var(--s4) var(--s5)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)' }}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', gap: 'var(--s2)',
+            background: 'none', border: 0, padding: 0, cursor: 'pointer',
+            color: 'inherit', textAlign: 'left', minHeight: 32,
+          }}
+        >
+          <h2 style={{ fontSize: 'var(--fs-md)', fontWeight: 700, letterSpacing: '-.02em' }}>{title}</h2>
+          <span className="num" style={{
+            fontSize: 'var(--fs-2xs)', fontWeight: 800, color: 'var(--text-muted)',
+            background: 'var(--surface-2)', borderRadius: 999, padding: '2px 8px',
+          }}>{count}</span>
+          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden stroke="currentColor" strokeWidth={2.4}
+               fill="none" strokeLinecap="round" strokeLinejoin="round"
+               style={{ marginLeft: 'auto', color: 'var(--text-dim)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .18s ease' }}>
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        {open && onAdd && <CardAction onClick={onAdd}><PlusGlyph />New</CardAction>}
+      </div>
+      {open && (
+        <div style={{ marginTop: 'var(--s2)' }}>
+          {count === 0
+            ? <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600, padding: 'var(--s2) 0' }}>Nothing here yet.</p>
+            : children}
+        </div>
+      )}
+    </Card>
   );
 }
 

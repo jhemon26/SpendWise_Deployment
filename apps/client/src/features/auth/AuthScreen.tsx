@@ -5,18 +5,15 @@ import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
 /**
  * Sign-in (ARCHITECTURE §9.1).
  *
- * Passwordless: no password field, no "create account" form. Google and Apple
- * lead because they cost nothing per sign-in and are the safest of the four;
- * phone sits last, being the weakest (SIM swap) and the only one that bills
- * per attempt.
+ * Passwordless: no password field, no "create account" form.
  *
- * Four things here are load-bearing on a phone, and easy to leave out:
+ * Four things here are load-bearing on a phone and easy to leave out:
  *   - autoComplete="one-time-code" so iOS and Android offer the SMS code from
  *     the keyboard. Without it every user retypes six digits by hand.
- *   - Six separate boxes that accept a PASTE into any of them, because people
- *     copy the whole code from the message.
+ *   - Six boxes that accept a PASTE into any of them, because people copy the
+ *     whole code out of the message.
  *   - A resend countdown, so "nothing happened" has an obvious next step
- *     instead of the user hammering a button that is rate-limited anyway.
+ *     instead of the user hammering a rate-limited button.
  *   - Errors that name the fix, not the failure.
  */
 
@@ -33,8 +30,8 @@ const FRIENDLY: Record<string, string> = {
   network_error: "Can't reach SpendWise. Check your connection and try again.",
   otp_send_failed: "That number didn't work. Check it and try again.",
   rate_limited_target: 'Too many codes for that number. Try again in an hour.',
-  rate_limited_ip: 'Too many attempts from this device. Try again tomorrow.',
-  spend_ceiling: 'Text messages are unavailable right now. Try Google or Apple.',
+  rate_limited_ip: 'Too many sign-in attempts. Try again later.',
+  spend_ceiling: 'Text messages are unavailable right now. Please try again shortly.',
   blocked_prefix: "We can't send codes to that number.",
   bad_code: "That code isn't right.",
   expired: 'That code expired. Send a new one.',
@@ -44,9 +41,13 @@ const FRIENDLY: Record<string, string> = {
 
 const RESEND_SECONDS = 30;
 
+/** Enough to cover the realistic cases without dragging in a country picker. */
+const DIAL_CODES = ['+44', '+353', '+1', '+33', '+34', '+49', '+39', '+31', '+61', '+64', '+91', '+880'];
+
 export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScreenProps): JSX.Element {
   const [stage, setStage] = useState<Stage>(oidcAvailable ? 'choose' : 'phone');
-  const [phone, setPhone] = useState('+44');
+  const [dial, setDial] = useState('+44');
+  const [local, setLocal] = useState('');
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
   const [challengeId, setChallengeId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -55,6 +56,12 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
   const boxes = useRef<Array<HTMLInputElement | null>>([]);
   const code = digits.join('');
+
+  /* The leading 0 is a national-dialling prefix and is NOT part of the E.164
+     number: +44 07424… and +44 7424… are the same phone but would otherwise
+     become two separate accounts. Splitting the dial code off makes that
+     impossible to type in the first place. */
+  const phone = `${dial}${local.replace(/\D/g, '').replace(/^0+/, '')}`;
   const validPhone = isValidPhoneE164(phone);
 
   useEffect(() => {
@@ -100,10 +107,8 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
       const next = [...digits];
       for (let k = 0; k < only.length && i + k < 6; k++) next[i + k] = only[k]!;
       setDigits(next);
-      const filled = next.join('');
-      const last = Math.min(i + only.length, 5);
-      boxes.current[last]?.focus();
-      if (filled.length === 6) void verify(filled);
+      boxes.current[Math.min(i + only.length, 5)]?.focus();
+      if (next.join('').length === 6) void verify(next.join(''));
       return;
     }
     const next = [...digits];
@@ -122,57 +127,77 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
   return (
     <main style={page}>
+      <div style={glow} aria-hidden="true" />
       <section style={shell}>
-        <div style={aurora} aria-hidden="true" />
+        <header style={{ textAlign: 'center' }}>
+          <img src="/icon-192.png" alt="" width={60} height={60} style={mark} />
+          <h1 style={headline}>
+            {stage === 'code' ? 'Enter your code'
+              : stage === 'phone' ? 'Sign in to SpendWise'
+                : 'Know what you can spend'}
+          </h1>
+          <p style={subhead}>
+            {stage === 'code'
+              ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
+              : stage === 'phone' ? 'Enter your mobile number and we’ll text you a code.'
+                : 'Track every penny. Works with no signal.'}
+          </p>
+        </header>
 
         <div style={card}>
-          <header style={{ textAlign: 'center', marginBottom: 'var(--s5)' }}>
-            <img src="/icon-192.png" alt="" width={64} height={64} style={markImg} />
-            <h1 style={headline}>
-              {stage === 'code' ? 'Check your messages' :
-               stage === 'phone' ? "What's your number?" :
-               'Know what you can spend'}
-            </h1>
-            <p style={subhead}>
-              {stage === 'code' ? <>We sent a six-digit code to <b style={{ color: 'var(--text)' }}>{phone}</b>.</> :
-               stage === 'phone' ? 'We’ll text you a code. No password to remember.' :
-               'Track every penny. Works with no signal.'}
+          {error && (
+            <p role="alert" style={errorBox}>
+              <svg viewBox="0 0 24 24" width={15} height={15} aria-hidden stroke="currentColor" strokeWidth={2.2}
+                   fill="none" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                <circle cx="12" cy="12" r="9" /><path d="M12 8v5" /><path d="M12 16h.01" />
+              </svg>
+              <span>{error}</span>
             </p>
-          </header>
-
-          {error && <p role="alert" style={errorBox}>{error}</p>}
+          )}
 
           {stage === 'choose' && (
             <div style={stack}>
               <Provider kind="google" disabled={!oidcAvailable} />
               <Provider kind="apple" disabled={!oidcAvailable} />
-              <div style={divider}><i style={rule} />or<i style={rule} /></div>
+              <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
               <button type="button" onClick={() => setStage('phone')} style={secondary}>
-                Continue with phone number
+                Continue with phone
               </button>
             </div>
           )}
 
           {stage === 'phone' && (
             <div style={stack}>
-              <input
-                autoFocus
-                inputMode="tel"
-                autoComplete="tel"
-                aria-label="Mobile number"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && validPhone) void send(); }}
-                placeholder="+44 7700 900000"
-                style={field}
-              />
-              <p style={hint}>Include your country code.</p>
+              <label htmlFor="sw-phone" style={fieldLabel}>Mobile number</label>
+              <div style={phoneRow}>
+                <select
+                  value={dial}
+                  onChange={(e) => setDial(e.target.value)}
+                  aria-label="Country dialling code"
+                  style={dialSelect}
+                >
+                  {DIAL_CODES.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <input
+                  id="sw-phone"
+                  autoFocus
+                  inputMode="tel"
+                  autoComplete="tel-national"
+                  value={local}
+                  onChange={(e) => setLocal(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && validPhone) void send(); }}
+                  placeholder="7700 900000"
+                  style={phoneInput}
+                />
+              </div>
+
               <button type="button" disabled={!validPhone || busy} onClick={() => void send()} style={primary(!validPhone || busy)}>
-                {busy ? 'Sending…' : 'Send code'}
+                {busy ? <><Spinner />Sending…</> : 'Send code'}
               </button>
+
               {oidcAvailable && (
                 <button type="button" onClick={() => { setStage('choose'); setError(null); }} style={ghost}>
-                  Back
+                  More sign-in options
                 </button>
               )}
             </div>
@@ -181,53 +206,75 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           {stage === 'code' && (
             <div style={stack}>
               <div style={boxRow}>
-                {digits.map((d, i) => (
+                {digits.map((dgt, i) => (
                   <input
                     key={i}
                     ref={(el) => { boxes.current[i] = el; }}
-                    value={d}
+                    value={dgt}
                     onChange={(e) => onDigit(i, e.target.value)}
                     onKeyDown={(e) => onDigitKey(i, e)}
                     inputMode="numeric"
-                    // This is what makes iOS and Android offer the code from
-                    // the keyboard instead of making people retype it.
+                    // What makes iOS and Android offer the code from the
+                    // keyboard instead of making people retype it.
                     autoComplete="one-time-code"
                     maxLength={6}
                     aria-label={`Digit ${i + 1}`}
-                    style={digitBox(Boolean(d))}
+                    style={digitBox(Boolean(dgt))}
                   />
                 ))}
               </div>
 
               <button type="button" disabled={code.length !== 6 || busy} onClick={() => void verify()} style={primary(code.length !== 6 || busy)}>
-                {busy ? 'Checking…' : 'Sign in'}
+                {busy ? <><Spinner />Checking…</> : 'Verify and continue'}
               </button>
 
-              <button
-                type="button"
-                disabled={cooldown > 0 || busy}
-                onClick={() => void send()}
-                style={{ ...ghost, opacity: cooldown > 0 ? 0.45 : 1 }}
-              >
-                {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
-              </button>
-              <button type="button" onClick={() => { setStage('phone'); setError(null); }} style={ghost}>
-                Use a different number
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 'var(--s2)', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  disabled={cooldown > 0 || busy}
+                  onClick={() => void send()}
+                  style={{ ...linkBtn, opacity: cooldown > 0 ? .45 : 1, cursor: cooldown > 0 ? 'default' : 'pointer' }}
+                >
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                </button>
+                <span aria-hidden style={{ color: 'var(--text-dim)' }}>·</span>
+                <button type="button" onClick={() => { setStage('phone'); setError(null); }} style={linkBtn}>
+                  Change number
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        <p style={microcopy}>No passwords. Your data is stored on this device first.</p>
+        <p style={microcopy}>
+          <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden stroke="currentColor" strokeWidth={2}
+               fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+          </svg>
+          No passwords. Your data stays on this device first.
+        </p>
       </section>
     </main>
+  );
+}
+
+function Spinner(): JSX.Element {
+  return (
+    <>
+      <span aria-hidden style={{
+        width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
+        border: '2px solid rgba(255,255,255,.35)', borderTopColor: '#fff',
+        animation: 'sw-spin .7s linear infinite',
+      }} />
+      <style>{'@keyframes sw-spin{to{transform:rotate(360deg)}}'}</style>
+    </>
   );
 }
 
 function Provider({ kind, disabled }: { kind: 'google' | 'apple'; disabled: boolean }): JSX.Element {
   const label = kind === 'google' ? 'Continue with Google' : 'Continue with Apple';
   return (
-    <button type="button" disabled={disabled} style={{ ...secondary, opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+    <button type="button" disabled={disabled} style={{ ...secondary, opacity: disabled ? .4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
       <span style={badge}>{kind === 'google' ? 'G' : ''}</span>
       {label}
     </button>
@@ -237,72 +284,85 @@ function Provider({ kind, disabled }: { kind: 'google' | 'apple'; disabled: bool
 /* ── styles ─────────────────────────────────────────────────────────────── */
 
 const page: React.CSSProperties = {
+  position: 'relative',
   minHeight: '100dvh',
-  background:
-    'radial-gradient(circle at 15% 0%, rgba(99,102,241,.16), transparent 42%),' +
-    'radial-gradient(circle at 85% 8%, rgba(6,182,212,.12), transparent 38%),' +
-    'var(--bg)',
+  background: 'var(--bg)',
   color: 'var(--text)',
-  fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
   display: 'grid',
   placeItems: 'center',
   padding: 'var(--s5)',
+  overflow: 'hidden',
 };
 
-const shell: React.CSSProperties = { position: 'relative', width: 'min(100%, 420px)', display: 'grid', gap: 'var(--s4)' };
-
-const aurora: React.CSSProperties = {
-  position: 'absolute', inset: '-30px -20px auto', height: 200, borderRadius: 40,
-  background: 'radial-gradient(circle at 30% 20%, rgba(99,102,241,.30), transparent 45%), radial-gradient(circle at 75% 30%, rgba(168,85,247,.22), transparent 40%)',
-  filter: 'blur(18px)', pointerEvents: 'none',
+/** One soft brand bloom behind the card, rather than competing gradients. */
+const glow: React.CSSProperties = {
+  position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
+  width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
+  background: 'radial-gradient(circle, rgba(99,102,241,.20) 0%, rgba(6,182,212,.08) 42%, transparent 68%)',
 };
 
-const card: React.CSSProperties = {
-  position: 'relative', zIndex: 1, padding: 'var(--s6) var(--s5)', borderRadius: 28,
-  background: 'var(--surface)',
-  border: '1px solid var(--line)',
-  boxShadow: 'var(--shadow)',
+const shell: React.CSSProperties = {
+  position: 'relative', zIndex: 1, width: 'min(100%, 400px)',
+  display: 'grid', gap: 'var(--s5)',
 };
 
-const markImg: React.CSSProperties = { borderRadius: 18, marginBottom: 'var(--s3)' };
+const mark: React.CSSProperties = { borderRadius: 17, marginBottom: 'var(--s4)' };
 
 const headline: React.CSSProperties = {
-  fontSize: 26, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15,
+  fontSize: 25, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15,
 };
 
 const subhead: React.CSSProperties = {
   fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5,
 };
 
+const card: React.CSSProperties = {
+  padding: 'var(--s5)', borderRadius: 22,
+  background: 'var(--surface)',
+  border: '1px solid var(--line)',
+  boxShadow: 'var(--shadow)',
+};
+
 const stack: React.CSSProperties = { display: 'grid', gap: 'var(--s3)' };
 
 const errorBox: React.CSSProperties = {
+  display: 'flex', gap: 8, alignItems: 'flex-start',
   fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--danger)',
   background: 'var(--danger-soft)', border: '1px solid var(--danger-soft)',
-  padding: 'var(--s3)', borderRadius: 'var(--r-md)', marginBottom: 'var(--s3)',
+  padding: 'var(--s3)', borderRadius: 'var(--r-md)', marginBottom: 'var(--s4)',
+  lineHeight: 1.4,
 };
 
-const hint: React.CSSProperties = {
-  fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', textAlign: 'center',
+const fieldLabel: React.CSSProperties = {
+  fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.07em',
+  textTransform: 'uppercase', color: 'var(--text-dim)',
 };
 
-const divider: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12,
-  color: 'var(--text-dim)', fontSize: 'var(--fs-2xs)', fontWeight: 700,
-  letterSpacing: '.1em', textTransform: 'uppercase',
-};
-const rule: React.CSSProperties = { height: 1, background: 'var(--line)' };
-
-const field: React.CSSProperties = {
-  width: '100%', background: 'var(--surface-2)', border: '1px solid var(--line)',
-  borderRadius: 'var(--r-md)', padding: '16px var(--s4)', fontSize: 17, fontWeight: 600,
-  color: 'var(--text)', outline: 'none',
+const phoneRow: React.CSSProperties = {
+  display: 'flex', alignItems: 'stretch',
+  background: 'var(--surface-2)', border: '1px solid var(--line)',
+  borderRadius: 'var(--r-md)', overflow: 'hidden',
 };
 
-const boxRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 };
+const dialSelect: React.CSSProperties = {
+  appearance: 'none', background: 'transparent', border: 0, outline: 'none',
+  padding: '0 var(--s3) 0 var(--s4)', color: 'var(--text)',
+  fontSize: 17, fontWeight: 700, cursor: 'pointer',
+  borderRight: '1px solid var(--line)',
+};
+
+const phoneInput: React.CSSProperties = {
+  flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none',
+  padding: '16px var(--s4)', fontSize: 17, fontWeight: 600,
+  color: 'var(--text)', fontVariantNumeric: 'tabular-nums',
+};
+
+const boxRow: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, marginBottom: 'var(--s2)',
+};
 
 const digitBox = (filled: boolean): React.CSSProperties => ({
-  width: '100%', aspectRatio: '1 / 1.15', textAlign: 'center',
+  width: '100%', aspectRatio: '1 / 1.2', textAlign: 'center',
   fontSize: 24, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
   color: 'var(--text)', background: filled ? 'var(--brand-soft)' : 'var(--surface-2)',
   border: `1.5px solid ${filled ? 'var(--line-brand)' : 'var(--line)'}`,
@@ -319,7 +379,9 @@ const base: React.CSSProperties = {
 
 const primary = (disabled: boolean): React.CSSProperties => ({
   ...base, background: 'var(--brand)', color: '#fff',
-  opacity: disabled ? 0.35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
+  boxShadow: disabled ? 'none' : '0 8px 22px -10px rgba(99,102,241,.9)',
+  opacity: disabled ? .35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
+  transition: 'opacity .15s ease, box-shadow .15s ease',
 });
 
 const secondary: React.CSSProperties = {
@@ -331,11 +393,24 @@ const ghost: React.CSSProperties = {
   ...base, minHeight: 44, background: 'transparent', color: 'var(--text-dim)', fontWeight: 600,
 };
 
+const linkBtn: React.CSSProperties = {
+  background: 'none', border: 0, padding: '6px 2px',
+  fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--brand)', cursor: 'pointer',
+};
+
+const divider: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12,
+  color: 'var(--text-dim)', fontSize: 'var(--fs-2xs)', fontWeight: 700,
+  letterSpacing: '.1em', textTransform: 'uppercase', padding: 'var(--s1) 0',
+};
+const rule: React.CSSProperties = { height: 1, background: 'var(--line)' };
+
 const badge: React.CSSProperties = {
   width: 22, height: 22, borderRadius: 6, display: 'grid', placeItems: 'center',
   background: 'var(--surface-3)', fontSize: 13, fontWeight: 800,
 };
 
 const microcopy: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
   fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', textAlign: 'center',
 };

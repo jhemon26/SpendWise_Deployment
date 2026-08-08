@@ -104,7 +104,30 @@ export const REDIS = Symbol('REDIS');
       provide: OtpService,
       useFactory: (redis: Redis | null): OtpService => {
         const store: OtpStore = redis ? new RedisOtpStore(redis) : new InMemoryOtpStore();
+        /**
+         * Tunable without a rebuild, because the right numbers are only
+         * knowable from real traffic.
+         *
+         * The per-IP limit is the loose one on purpose. Mobile carriers put
+         * thousands of subscribers behind a single CGNAT address, so a tight
+         * per-IP cap does not stop an attacker (they rotate addresses) but does
+         * lock out everyone on that carrier. The controls that actually matter
+         * are per-NUMBER sends, which is what SMS pumping abuses, the daily
+         * spend ceiling, and the five-guess attempt limit — and those stay
+         * tight.
+         */
+        const num = (key: string, fallback: number): number => {
+          const raw = process.env[key];
+          if (raw === undefined) return fallback;
+          const n = Number(raw);
+          return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+        };
+
         return new OtpService(store, {
+          perTargetPerHour: num('OTP_PER_TARGET_PER_HOUR', 5),
+          perIpPerDay: num('OTP_PER_IP_PER_DAY', 60),
+          dailySendCeiling: num('OTP_DAILY_CEILING', 5000),
+          maxAttempts: num('OTP_MAX_ATTEMPTS', 5),
           // Premium-rate ranges commonly abused for SMS pumping (§9.1).
           blockedPrefixes: ['+8811', '+8812', '+8813', '+239', '+676', '+675'],
         });

@@ -95,11 +95,23 @@ export function App(): JSX.Element {
       displayName: r.displayName,
       baseCurrency: r.baseCurrency,
       dayToDayMinor: r.budgets.reduce((s, b) => s + b.limitMinor, 0) || state.dayToDayMinor,
-      savingsTargetMinor: Math.max(0, r.monthlyIncomeMinor - r.budgets.reduce((s, b) => s + b.limitMinor, 0)),
+      savingsTargetMinor: Math.max(
+        0,
+        r.monthlyIncomeMinor
+          - r.budgets.reduce((s, b) => s + b.limitMinor, 0)
+          - r.fixedCosts.reduce((s, f) => s + f.limitMinor, 0),
+      ),
     });
     for (const b of r.budgets) {
       await state.upsertCategory(db, {
-        name: b.name, icon: b.icon, colour: b.colour, limit_minor: b.limitMinor, is_fixed: false,
+        name: b.name, icon: b.icon, colour: b.colour, limit_minor: b.limitMinor,
+        is_fixed: false, due_day: null,
+      });
+    }
+    for (const f of r.fixedCosts) {
+      await state.upsertCategory(db, {
+        name: f.name, icon: f.icon, colour: f.colour, limit_minor: f.limitMinor,
+        is_fixed: true, due_day: f.dueDay,
       });
     }
     localStorage.setItem('sw.onboarded', '1');

@@ -19,6 +19,14 @@ export interface OnboardingResult {
   baseCurrency: string;
   monthlyIncomeMinor: number;
   budgets: Array<{ name: string; icon: string; colour: string; limitMinor: number }>;
+  /**
+   * Recurring commitments, kept apart from day-to-day money.
+   *
+   * The split is the whole point of the app: rent is not discretionary, so
+   * mixing it into the spending budget makes "safe to spend" meaningless. It
+   * has to be declared at setup, not left for the user to discover later.
+   */
+  fixedCosts: Array<{ name: string; icon: string; colour: string; limitMinor: number; dueDay: number }>;
 }
 
 export interface OnboardingProps {
@@ -40,7 +48,21 @@ const SUGGESTED = [
   { name: 'Subscriptions', icon: 'subscription', colour: '#38BDF8', share: 0.03 },
 ];
 
-type Step = 0 | 1 | 2 | 3 | 4;
+/** Fixed costs offered by default, with the day they usually land. */
+const FIXED_SUGGESTED = [
+  { name: 'Rent',          icon: 'rent',         colour: '#8B5CF6', dueDay: 1 },
+  { name: 'Council tax',   icon: 'bills',        colour: '#64748B', dueDay: 1 },
+  { name: 'Energy',        icon: 'utilities',    colour: '#EAB308', dueDay: 5 },
+  { name: 'Water',         icon: 'water',        colour: '#22D3EE', dueDay: 5 },
+  { name: 'Broadband',     icon: 'wifi',         colour: '#38BDF8', dueDay: 12 },
+  { name: 'Phone',         icon: 'phone',        colour: '#6366F1', dueDay: 20 },
+  { name: 'Car finance',   icon: 'car',          colour: '#6366F1', dueDay: 2 },
+  { name: 'Insurance',     icon: 'health',       colour: '#F472B6', dueDay: 15 },
+  { name: 'Subscriptions', icon: 'subscription', colour: '#A855F7', dueDay: 22 },
+  { name: 'Gym',           icon: 'fitness',      colour: '#94A3B8', dueDay: 10 },
+];
+
+type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
 export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
   const [step, setStep] = useState<Step>(0);
@@ -49,6 +71,9 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
   const [income, setIncome] = useState('');
   const [chosen, setChosen] = useState<string[]>(SUGGESTED.slice(0, 5).map((c) => c.name));
   const [limits, setLimits] = useState<Record<string, string>>({});
+  const [fixedChosen, setFixedChosen] = useState<string[]>([]);
+  const [fixedAmounts, setFixedAmounts] = useState<Record<string, string>>({});
+  const [fixedDays, setFixedDays] = useState<Record<string, string>>({});
 
   const incomeMinor = useMemo(() => {
     try { return income ? toMinor(income, currency) : 0; } catch { return 0; }
@@ -72,6 +97,18 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
 
   const totalBudget = chosen.reduce((s, n) => s + limitFor(n), 0);
 
+  function fixedAmountFor(name: string): number {
+    const typed = fixedAmounts[name];
+    if (!typed) return 0;
+    try { return toMinor(typed, currency); } catch { return 0; }
+  }
+  function fixedDayFor(name: string): number {
+    const typed = Number(fixedDays[name]);
+    if (Number.isInteger(typed) && typed >= 1 && typed <= 31) return typed;
+    return FIXED_SUGGESTED.find((f) => f.name === name)?.dueDay ?? 1;
+  }
+  const totalFixed = fixedChosen.reduce((s, n) => s + fixedAmountFor(n), 0);
+
   function finish(): void {
     onDone({
       // Empty, not 'there'. That is a greeting filler; storing it as the name
@@ -83,10 +120,17 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         const c = SUGGESTED.find((s) => s.name === n)!;
         return { name: c.name, icon: c.icon, colour: c.colour, limitMinor: limitFor(n) };
       }),
+      fixedCosts: fixedChosen.map((n) => {
+        const c = FIXED_SUGGESTED.find((f) => f.name === n)!;
+        return {
+          name: c.name, icon: c.icon, colour: c.colour,
+          limitMinor: fixedAmountFor(n), dueDay: fixedDayFor(n),
+        };
+      }),
     });
   }
 
-  const next = (): void => setStep((s) => Math.min(4, s + 1) as Step);
+  const next = (): void => setStep((s) => Math.min(5, s + 1) as Step);
   const back = (): void => setStep((s) => Math.max(0, s - 1) as Step);
 
   return (
@@ -95,7 +139,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
       <div style={shell}>
         {step > 0 && (
           <div style={progressRow} aria-hidden="true">
-            {[1, 2, 3, 4].map((i) => (
+            {[1, 2, 3, 4, 5].map((i) => (
               <i key={i} style={{ ...bar, background: i <= step ? 'var(--brand)' : 'var(--surface-3)' }} />
             ))}
           </div>
@@ -248,6 +292,89 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               </p>
             )}
 
+            <button type="button" onClick={next} style={primary(false)}>Continue</button>
+            <button type="button" onClick={back} style={ghost}>Back</button>
+          </div>
+        )}
+
+        {/* ── 5. fixed costs ─────────────────────────────────────────── */}
+        {step === 5 && (
+          <div style={card}>
+            <h1 style={h1}>What has to be paid?</h1>
+            <p style={lede}>
+              Rent, bills, subscriptions — money that is spoken for before you spend
+              anything. Keeping these separate is what makes “safe to spend” honest.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 'var(--s2) 0 var(--s3)' }}>
+              {FIXED_SUGGESTED.map((f) => {
+                const on = fixedChosen.includes(f.name);
+                return (
+                  <button
+                    key={f.name}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setFixedChosen((p) => (on ? p.filter((x) => x !== f.name) : [...p, f.name]))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
+                      borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                      background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
+                      border: `1px solid ${on ? 'var(--line-brand)' : 'var(--line)'}`,
+                      color: on ? 'var(--text)' : 'var(--text-dim)',
+                    }}
+                  >
+                    <i style={{ width: 8, height: 8, borderRadius: 999, background: f.colour, flexShrink: 0 }} />
+                    {f.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {fixedChosen.length > 0 && (
+              <div style={{ display: 'grid', gap: 10, marginBottom: 'var(--s3)' }}>
+                {fixedChosen.map((n) => {
+                  const c = FIXED_SUGGESTED.find((f) => f.name === n)!;
+                  return (
+                    <div key={n} style={budgetRow}>
+                      <Icon name={c.icon} size={30} colour={c.colour} />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700 }}>{c.name}</span>
+                      <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>
+                        {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        value={fixedAmounts[n] ?? ''}
+                        onChange={(e) => setFixedAmounts((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                        placeholder="0"
+                        aria-label={`${n} monthly amount`}
+                        style={budgetInput}
+                      />
+                      <span style={{ color: 'var(--text-dim)', fontSize: 12, fontWeight: 700 }}>on</span>
+                      <input
+                        inputMode="numeric"
+                        value={fixedDays[n] ?? String(c.dueDay)}
+                        onChange={(e) => setFixedDays((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))}
+                        aria-label={`${n} due day`}
+                        style={{ ...budgetInput, width: 34, textAlign: 'center' }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={totalRow}>
+              <span>Fixed costs</span>
+              <b className="num">{formatMoney(totalFixed, currency)}</b>
+            </div>
+            {incomeMinor > 0 && (
+              <p style={{ ...hint, marginBottom: 'var(--s3)' }}>
+                {totalFixed + totalBudget > incomeMinor
+                  ? `Bills and budget come to ${formatMoney(totalFixed + totalBudget - incomeMinor, currency)} more than you earn.`
+                  : `Leaves ${formatMoney(incomeMinor - totalFixed - totalBudget, currency)} to save each month.`}
+              </p>
+            )}
+
             <button type="button" onClick={finish} style={primary(false)}>Finish setup</button>
             <button type="button" onClick={back} style={ghost}>Back</button>
           </div>
@@ -274,7 +401,7 @@ const glow: React.CSSProperties = {
 const shell: React.CSSProperties = {
   position: 'relative', zIndex: 1, width: 'min(100%, 400px)', display: 'grid', gap: 'var(--s4)',
 };
-const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 };
+const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 };
 const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };
 const card: React.CSSProperties = {
   padding: 'var(--s5)', borderRadius: 22,

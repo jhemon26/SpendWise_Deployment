@@ -670,27 +670,47 @@ export function Profile({
         />
       </Card>
 
-      <Card>
-        <CardHead
-          title="Categories"
-          action={onEditCategory && (
-            <CardAction onClick={() => onEditCategory(null)}>
-              <PlusGlyph />New
-            </CardAction>
-          )}
-        />
-        {categories.filter((c) => !c.deleted_at).map((c, i) => (
-          <SettingRow
-            key={c.local_id}
-            divider={i > 0}
-            icon={<Icon name={c.icon} size={30} colour={c.colour} />}
-            name={c.name}
-            sub={`${c.is_fixed ? 'Fixed cost' : 'Day-to-day'} · ${money(d.byCategory.get(c.local_id) ?? 0, currency)} used`}
-            value={money0(c.limit_minor, currency)}
-            onClick={onEditCategory && (() => onEditCategory(c))}
-          />
-        ))}
-      </Card>
+      {/* Split into the two pots rather than one flat list. The distinction
+          drives every figure on Home, so seeing which bucket a category is in
+          — and being able to move it — has to be obvious, not buried in an
+          editor the user has to open to find out. */}
+      {([
+        ['Day-to-day', false, 'Comes out of your spending money'],
+        ['Fixed costs', true, 'Committed before you spend anything'],
+      ] as const).map(([heading, fixed, blurb]) => {
+        const rows = categories.filter((c) => !c.deleted_at && c.is_fixed === fixed);
+        return (
+          <Card key={heading}>
+            <CardHead
+              title={heading}
+              action={onEditCategory && (
+                <CardAction onClick={() => onEditCategory(null)}>
+                  <PlusGlyph />New
+                </CardAction>
+              )}
+            />
+            {rows.length === 0
+              ? (
+                <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600 }}>
+                  Nothing here yet. {blurb}.
+                </p>
+              )
+              : rows.map((c, i) => (
+                <SettingRow
+                  key={c.local_id}
+                  divider={i > 0}
+                  icon={<Icon name={c.icon} size={30} colour={c.colour} />}
+                  name={c.name}
+                  sub={fixed
+                    ? `${c.due_day ? `Due on the ${ordinal(c.due_day)}` : 'No due day set'} · ${money(d.byCategory.get(c.local_id) ?? 0, currency)} paid`
+                    : `${money(d.byCategory.get(c.local_id) ?? 0, currency)} of ${money0(c.limit_minor, currency)} used`}
+                  value={money0(c.limit_minor, currency)}
+                  onClick={onEditCategory && (() => onEditCategory(c))}
+                />
+              ))}
+          </Card>
+        );
+      })}
 
       <Card>
         <CardHead
@@ -733,6 +753,14 @@ export function Profile({
       )}
     </>
   );
+}
+
+/** 1st, 2nd, 3rd, 4th… 11th-13th are the exceptions that catch naive rules. */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th';
+  return `${n}${suffix}`;
 }
 
 function PlusGlyph(): JSX.Element {

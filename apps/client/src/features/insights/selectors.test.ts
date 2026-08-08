@@ -305,3 +305,58 @@ describe('monthHistory', () => {
     expect(historyAverageMinor([{ label: 'Aug', totalMinor: 10, current: true }])).toBe(0);
   });
 });
+
+describe('fixed vs day-to-day classification', () => {
+  // This split is the product. If a bill leaks into day-to-day, "safe to
+  // spend" is wrong on the one screen the whole app exists to show.
+  const food = cat({ name: 'Groceries', is_fixed: false, limit_minor: 32000 });
+  const rent = cat({ name: 'Rent', is_fixed: true, due_day: 1, limit_minor: 90000 });
+  const ctx = { now: NOW, dayToDayMinor: 82000, savingsTargetMinor: 0 };
+
+  it('a bill does not reduce what is safe to spend', () => {
+    const withRent = derive([tx({ category_id: rent.local_id, amount_minor: -90000, base_minor: -90000 })], [food, rent], ctx);
+    const withNothing = derive([], [food, rent], ctx);
+    expect(withRent.leftMinor).toBe(withNothing.leftMinor);
+  });
+
+  it('a day-to-day spend does reduce it', () => {
+    const spend = derive([tx({ category_id: food.local_id, amount_minor: -2000, base_minor: -2000 })], [food, rent], ctx);
+    expect(spend.leftMinor).toBe(82000 - 2000);
+  });
+
+  it('routes each spend to the right total', () => {
+    const d = derive([
+      tx({ category_id: food.local_id, amount_minor: -2000, base_minor: -2000 }),
+      tx({ category_id: rent.local_id, amount_minor: -90000, base_minor: -90000 }),
+    ], [food, rent], ctx);
+    expect(d.flexSpentMinor).toBe(2000);
+    expect(d.fixedSpentMinor).toBe(90000);
+    expect(d.monthTotalMinor).toBe(92000);
+  });
+
+  it('re-flagging a category moves its spending between the pots', () => {
+    // Editing the type in Profile has to reclassify history too, otherwise the
+    // totals disagree with what the category now says it is.
+    const spend = tx({ category_id: food.local_id, amount_minor: -2000, base_minor: -2000 });
+    const asFlex = derive([spend], [{ ...food, is_fixed: false }], ctx);
+    const asFixed = derive([spend], [{ ...food, is_fixed: true }], ctx);
+    expect(asFlex.flexSpentMinor).toBe(2000);
+    expect(asFixed.flexSpentMinor).toBe(0);
+    expect(asFixed.fixedSpentMinor).toBe(2000);
+  });
+
+  it('an uncategorised spend is treated as fixed, not as free money', () => {
+    // Erring the other way would inflate what is safe to spend.
+    const d = derive([tx({ category_id: null, amount_minor: -5000, base_minor: -5000 })], [food, rent], ctx);
+    expect(d.flexSpentMinor).toBe(0);
+    expect(d.fixedSpentMinor).toBe(5000);
+  });
+
+  it('the fixed share reflects the split', () => {
+    const d = derive([
+      tx({ category_id: food.local_id, amount_minor: -2500, base_minor: -2500 }),
+      tx({ category_id: rent.local_id, amount_minor: -7500, base_minor: -7500 }),
+    ], [food, rent], ctx);
+    expect(Math.round(d.fixedSharePct)).toBe(75);
+  });
+});

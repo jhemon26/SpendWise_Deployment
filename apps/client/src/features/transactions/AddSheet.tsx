@@ -50,6 +50,11 @@ export function AddSheet({
   open, editing, categories, banks, derived, baseCurrency, onClose, onSave, onDelete,
 }: AddSheetProps): JSX.Element | null {
   const flex = useMemo(() => categories.filter((c) => !c.is_fixed && !c.deleted_at), [categories]);
+  const fixedCats = useMemo(() => categories.filter((c) => c.is_fixed && !c.deleted_at), [categories]);
+  /* Both kinds are selectable. Offering only day-to-day meant a rent payment
+     could not be recorded at all, so the one spend that most needs to stay out
+     of "safe to spend" had nowhere to go. */
+  const selectable = useMemo(() => [...flex, ...fixedCats], [flex, fixedCats]);
 
   const [isIncome, setIsIncome] = useState(false);
   const [entry, setEntry] = useState('');
@@ -83,7 +88,8 @@ export function AddSheet({
     amountMinor = 0;
   }
 
-  const category = flex.find((c) => c.local_id === categoryId) ?? null;
+  const category = selectable.find((c) => c.local_id === categoryId) ?? null;
+  const isFixedSpend = Boolean(category?.is_fixed);
   const canSave = amountMinor > 0 && (isIncome || categoryId !== null) && bankId !== null;
   const accent = isIncome ? 'var(--positive)' : (category?.colour ?? 'var(--brand)');
 
@@ -190,8 +196,8 @@ export function AddSheet({
 
         {!isIncome && (
           <>
-            <p style={labelStyle}>Category</p>
-            <div role="group" aria-label="Category" style={stripStyle}>
+            <p style={labelStyle}>Day-to-day</p>
+            <div role="group" aria-label="Day-to-day category" style={stripStyle}>
               {flex.map((c) => (
                 <button
                   key={c.local_id}
@@ -212,6 +218,52 @@ export function AddSheet({
                 </button>
               ))}
             </div>
+
+            {fixedCats.length > 0 && (
+              <>
+                <p style={labelStyle}>Bills &amp; fixed costs</p>
+                <div role="group" aria-label="Fixed cost category" style={stripStyle}>
+                  {fixedCats.map((c) => (
+                    <button
+                      key={c.local_id}
+                      type="button"
+                      aria-pressed={categoryId === c.local_id}
+                      onClick={() => setCategoryId(c.local_id)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                        fontSize: 10, fontWeight: 700, padding: 'var(--s2) 4px', borderRadius: 'var(--r-md)',
+                        minWidth: 60, flexShrink: 0, cursor: 'pointer',
+                        border: `1px solid ${categoryId === c.local_id ? 'var(--line-strong)' : 'transparent'}`,
+                        background: categoryId === c.local_id ? 'var(--surface-2)' : 'transparent',
+                        color: categoryId === c.local_id ? 'var(--text)' : 'var(--text-dim)',
+                      }}
+                    >
+                      <Icon name={c.icon} size={30} colour={c.colour} />
+                      <span style={{ maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Say which pot this lands in, at the moment of choosing. The
+                classification drives every figure on Home, so it should not be
+                something the user has to infer afterwards. */}
+            {category && (
+              <p style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginTop: 'var(--s1)',
+                fontSize: 'var(--fs-2xs)', fontWeight: 700,
+                color: isFixedSpend ? 'var(--text-muted)' : 'var(--brand-cyan)',
+              }}>
+                <i style={{
+                  width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                  background: isFixedSpend ? 'var(--text-dim)' : 'var(--brand-cyan)',
+                }} />
+                {isFixedSpend
+                  ? 'Counts as a bill — does not change what is safe to spend'
+                  : 'Counts against your day-to-day budget'}
+              </p>
+            )}
           </>
         )}
 

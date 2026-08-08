@@ -3,6 +3,7 @@ import type { Bank, Category } from '@spendwise/shared-types';
 import { toMinor, fromMinor, formatMoney } from '@spendwise/shared-types';
 import { ICON_KEYS, ICONS } from '../../design-system/icons.js';
 import { AVATAR_EMOJI, Avatar } from '../../design-system/components.js';
+import { AVATAR_KEYS, SVG_PREFIX, isSvgAvatar } from '../../design-system/avatars.js';
 
 /**
  * The prototype's editing sheets, ported.
@@ -379,9 +380,38 @@ export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
         <Avatar emoji={pick} colour={tint} name={name} size={72} />
       </div>
 
-      <div role="group" aria-label="Avatar" style={{
+      <p style={label}>Characters</p>
+      <div role="group" aria-label="Illustrated avatar" style={{
         display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 'var(--s2)',
-        maxHeight: 210, overflowY: 'auto', padding: 2,
+        maxHeight: 220, overflowY: 'auto', padding: 2,
+      }}>
+        {AVATAR_KEYS.map((k) => {
+          const value = SVG_PREFIX + k;
+          const on = pick === value;
+          return (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={on}
+              aria-label={k}
+              onClick={() => setPick(value)}
+              style={{
+                aspectRatio: '1', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                display: 'grid', placeItems: 'center', padding: 3,
+                background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
+                border: `1.5px solid ${on ? 'var(--line-brand)' : 'transparent'}`,
+              }}
+            >
+              <Avatar emoji={value} colour={tint} name={name} size={30} />
+            </button>
+          );
+        })}
+      </div>
+
+      <p style={label}>Emoji</p>
+      <div role="group" aria-label="Emoji avatar" style={{
+        display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 'var(--s2)',
+        maxHeight: 150, overflowY: 'auto', padding: 2,
       }}>
         {AVATAR_EMOJI.map((e) => (
           <button
@@ -400,6 +430,8 @@ export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
         ))}
       </div>
 
+      {!isSvgAvatar(pick) && (
+        <>
       <p style={label}>Background</p>
       <div role="group" aria-label="Background colour" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s2)' }}>
         {PALETTE.map((c) => (
@@ -420,6 +452,8 @@ export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
           </button>
         ))}
       </div>
+        </>
+      )}
 
       <div style={btnRow}>
         <button type="button" style={ghost} onClick={() => { onSave({ emoji: '', colour: tint }); onClose(); }}>

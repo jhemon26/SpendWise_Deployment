@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { ICONS } from './icons.js';
 import { arcFor, tickFor, GAUGE_C } from './gauge-math.js';
+import { AVATARS, isSvgAvatar, svgAvatarKey } from './avatars.js';
 
 /* Primitives ported from the prototype's CSS component layer. Presentation
    only — every number they display is computed by the selectors. */
@@ -207,6 +208,27 @@ export const greetingFor = (name: string): string =>
 export function Avatar({ emoji, colour, name, size = 40 }: {
   emoji: string; colour: string; name: string; size?: number;
 }): JSX.Element {
+  // Illustrations carry their own background and palette, so they fill the
+  // circle outright — no plate colour underneath to show through or clash.
+  if (isSvgAvatar(emoji)) {
+    const art = AVATARS[svgAvatarKey(emoji)];
+    if (art) {
+      return (
+        <svg
+          viewBox="0 0 64 64"
+          width={size}
+          height={size}
+          role="img"
+          aria-label="Profile picture"
+          style={{ borderRadius: '50%', flexShrink: 0, display: 'block' }}
+          dangerouslySetInnerHTML={{ __html: art }}
+        />
+      );
+    }
+    // Unknown id (older build, hand-edited storage) — fall through to initials
+    // rather than rendering an empty circle.
+  }
+
   return (
     <span style={{
       width: size, height: size, borderRadius: 'var(--r-pill)', flexShrink: 0,

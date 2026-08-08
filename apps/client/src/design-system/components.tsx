@@ -179,3 +179,19 @@ export function Empty({ icon, title, body }: { icon: string; title: string; body
     </div>
   );
 }
+
+/**
+ * Initials for the avatar.
+ *
+ * The header used `name[0]` and Profile used up-to-two words, so one person saw
+ * "J" in one place and "JH" in the other. One rule, used by both.
+ */
+export function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '\u00B7';
+  return words.slice(0, 2).map((w) => [...w][0] ?? '').join('').toUpperCase();
+}
+
+/** The greeting falls back; the stored name does not. */
+export const greetingFor = (name: string): string =>
+  name.trim() ? `Hi, ${name.trim()}` : 'Hi there';

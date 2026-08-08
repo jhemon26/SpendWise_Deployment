@@ -74,7 +74,9 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
 
   function finish(): void {
     onDone({
-      displayName: name.trim() || 'there',
+      // Empty, not 'there'. That is a greeting filler; storing it as the name
+      // makes Profile say the person is called "there".
+      displayName: name.trim(),
       baseCurrency: currency,
       monthlyIncomeMinor: incomeMinor,
       budgets: chosen.map((n) => {
@@ -89,6 +91,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
 
   return (
     <main style={page}>
+      <div style={glow} aria-hidden="true" />
       <div style={shell}>
         {step > 0 && (
           <div style={progressRow} aria-hidden="true">
@@ -196,7 +199,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               })}
             </div>
             <button type="button" disabled={chosen.length === 0} onClick={next} style={primary(chosen.length === 0)}>
-              Continue with {chosen.length}
+              Continue with {chosen.length} {chosen.length === 1 ? 'category' : 'categories'}
             </button>
           </div>
         )}
@@ -257,16 +260,24 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
 /* ── styles ─────────────────────────────────────────────────────────────── */
 
 const page: React.CSSProperties = {
-  minHeight: '100dvh',
-  background: 'radial-gradient(circle at 15% 0%, rgba(99,102,241,.16), transparent 42%), var(--bg)',
+  position: 'relative', minHeight: '100dvh', overflow: 'hidden',
+  background: 'var(--bg)',
   color: 'var(--text)', fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
   display: 'grid', placeItems: 'center', padding: 'var(--s5)',
 };
-const shell: React.CSSProperties = { width: 'min(100%, 430px)', display: 'grid', gap: 'var(--s4)' };
+/** Identical bloom to the sign-in screen — same size, position and stops. */
+const glow: React.CSSProperties = {
+  position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
+  width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
+  background: 'radial-gradient(circle, rgba(99,102,241,.20) 0%, rgba(6,182,212,.08) 42%, transparent 68%)',
+};
+const shell: React.CSSProperties = {
+  position: 'relative', zIndex: 1, width: 'min(100%, 400px)', display: 'grid', gap: 'var(--s4)',
+};
 const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 };
 const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };
 const card: React.CSSProperties = {
-  padding: 'var(--s6) var(--s5)', borderRadius: 28,
+  padding: 'var(--s5)', borderRadius: 22,
   background: 'var(--surface)',
   border: '1px solid var(--line)', boxShadow: 'var(--shadow)', display: 'grid', gap: 'var(--s3)',
 };
@@ -288,7 +299,7 @@ const segRow: React.CSSProperties = {
 };
 const seg = (on: boolean): React.CSSProperties => ({
   padding: '10px 0', borderRadius: 999, border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 800,
-  background: on ? 'rgba(99,102,241,.9)' : 'transparent', color: on ? '#fff' : 'var(--text-dim)',
+  background: on ? 'var(--brand)' : 'transparent', color: on ? '#fff' : 'var(--text-dim)',
 });
 const amountRow: React.CSSProperties = { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 2, padding: 'var(--s3) 0' };
 const amountCur: React.CSSProperties = { fontSize: 30, fontWeight: 800, color: 'var(--text-dim)' };
@@ -323,6 +334,7 @@ const baseBtn: React.CSSProperties = {
 };
 const primary = (disabled: boolean): React.CSSProperties => ({
   ...baseBtn, background: 'var(--brand)', color: '#fff',
+  boxShadow: disabled ? 'none' : '0 8px 22px -10px rgba(99,102,241,.9)',
   opacity: disabled ? 0.35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
 });
 const ghost: React.CSSProperties = {

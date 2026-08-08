@@ -45,7 +45,10 @@ const RESEND_SECONDS = 30;
 const DIAL_CODES = ['+44', '+353', '+1', '+33', '+34', '+49', '+39', '+31', '+61', '+64', '+91', '+880'];
 
 export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScreenProps): JSX.Element {
-  const [stage, setStage] = useState<Stage>(oidcAvailable ? 'choose' : 'phone');
+  const [stage, setStage] = useState<Stage>('choose');
+  // Shown, not hidden: this is the shipping layout. Tapping an unconfigured
+  // provider says so plainly rather than failing silently or faking success.
+  const [soon, setSoon] = useState<string | null>(null);
   const [dial, setDial] = useState('+44');
   const [local, setLocal] = useState('');
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
@@ -157,11 +160,16 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              <Provider kind="google" disabled={!oidcAvailable} />
-              <Provider kind="apple" disabled={!oidcAvailable} />
+              <Provider kind="google" ready={oidcAvailable} onUnavailable={setSoon} />
+              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
+              {soon && (
+                <p role="status" style={soonNote}>
+                  {soon} sign-in is coming soon. Use your mobile number for now.
+                </p>
+              )}
               <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
-              <button type="button" onClick={() => setStage('phone')} style={secondary}>
-                Continue with phone
+              <button type="button" onClick={() => setStage('phone')} style={primary(false)}>
+                Continue with mobile number
               </button>
             </div>
           )}
@@ -195,11 +203,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                 {busy ? <><Spinner />Sending…</> : 'Send code'}
               </button>
 
-              {oidcAvailable && (
-                <button type="button" onClick={() => { setStage('choose'); setError(null); }} style={ghost}>
-                  More sign-in options
-                </button>
-              )}
+              <button type="button" onClick={() => { setStage('choose'); setError(null); }} style={ghost}>
+                More sign-in options
+              </button>
             </div>
           )}
 
@@ -271,13 +277,47 @@ function Spinner(): JSX.Element {
   );
 }
 
-function Provider({ kind, disabled }: { kind: 'google' | 'apple'; disabled: boolean }): JSX.Element {
-  const label = kind === 'google' ? 'Continue with Google' : 'Continue with Apple';
+/**
+ * Provider buttons use the real brand marks. Google's guidelines require the
+ * four-colour G on a light surface, so this one deliberately breaks the dark
+ * palette — a recoloured G is a brand violation and reads as a phishing page.
+ */
+function Provider({ kind, ready, onUnavailable }: {
+  kind: 'google' | 'apple';
+  ready: boolean;
+  onUnavailable: (name: string) => void;
+}): JSX.Element {
+  const name = kind === 'google' ? 'Google' : 'Apple';
+  const style = kind === 'google' ? googleBtn : appleBtn;
   return (
-    <button type="button" disabled={disabled} style={{ ...secondary, opacity: disabled ? .4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
-      <span style={badge}>{kind === 'google' ? 'G' : ''}</span>
-      {label}
+    <button
+      type="button"
+      onClick={() => { if (!ready) onUnavailable(name); }}
+      style={style}
+      aria-label={`Continue with ${name}`}
+    >
+      {kind === 'google' ? <GoogleMark /> : <AppleMark />}
+      Continue with {name}
     </button>
+  );
+}
+
+function GoogleMark(): JSX.Element {
+  return (
+    <svg width={18} height={18} viewBox="0 0 48 48" aria-hidden style={{ flexShrink: 0 }}>
+      <path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-3.2-.4-4.7H24v8.9h11.8c-.5 2.8-2 5.1-4.4 6.7v5.5h7.1c4.1-3.8 6.6-9.4 6.6-16.4z" />
+      <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.5-3.8-12.2-9H4.5v5.7C8.1 41.3 15.5 46 24 46z" />
+      <path fill="#FBBC05" d="M11.8 28.3c-.4-1.3-.7-2.7-.7-4.3s.3-2.9.7-4.3v-5.7H4.5C2.9 17.1 2 20.4 2 24s.9 6.9 2.5 10l7.3-5.7z" />
+      <path fill="#EA4335" d="M24 10.7c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.1 29.9 2 24 2 15.5 2 8.1 6.7 4.5 14l7.3 5.7c1.7-5.2 6.5-9 12.2-9z" />
+    </svg>
+  );
+}
+
+function AppleMark(): JSX.Element {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor" aria-hidden style={{ flexShrink: 0 }}>
+      <path d="M16.4 12.8c0-2.5 2-3.7 2.1-3.8-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.6.9s-1.9-.9-3.1-.8c-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.5.8 1.1 1.7 2.4 3 2.4 1.2 0 1.6-.8 3.1-.8s1.9.8 3.1.7c1.3 0 2.1-1.1 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.6-1-2.6-3.6zM14 4.9c.7-.8 1.1-1.9 1-3-.9 0-2.1.6-2.8 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.8-1.3z" />
+    </svg>
   );
 }
 
@@ -384,10 +424,6 @@ const primary = (disabled: boolean): React.CSSProperties => ({
   transition: 'opacity .15s ease, box-shadow .15s ease',
 });
 
-const secondary: React.CSSProperties = {
-  ...base, background: 'var(--surface-2)', color: 'var(--text)',
-  border: '1px solid var(--line)',
-};
 
 const ghost: React.CSSProperties = {
   ...base, minHeight: 44, background: 'transparent', color: 'var(--text-dim)', fontWeight: 600,
@@ -405,10 +441,22 @@ const divider: React.CSSProperties = {
 };
 const rule: React.CSSProperties = { height: 1, background: 'var(--line)' };
 
-const badge: React.CSSProperties = {
-  width: 22, height: 22, borderRadius: 6, display: 'grid', placeItems: 'center',
-  background: 'var(--surface-3)', fontSize: 13, fontWeight: 800,
+const googleBtn: React.CSSProperties = {
+  ...base, background: '#FFFFFF', color: '#1F1F1F', fontWeight: 700,
+  border: '1px solid rgba(0,0,0,.10)',
 };
+
+const appleBtn: React.CSSProperties = {
+  ...base, background: 'var(--text)', color: 'var(--bg)', fontWeight: 700,
+};
+
+const soonNote: React.CSSProperties = {
+  fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-muted)',
+  background: 'var(--surface-2)', border: '1px solid var(--line)',
+  padding: 'var(--s2) var(--s3)', borderRadius: 'var(--r-sm)', textAlign: 'center',
+  lineHeight: 1.45,
+};
+
 
 const microcopy: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,

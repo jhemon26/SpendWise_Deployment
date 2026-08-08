@@ -80,7 +80,7 @@ export type Settings = Pick<
 const DEFAULT_SETTINGS: Settings = {
   dayToDayMinor: 82000,
   savingsTargetMinor: 40800,
-  displayName: 'Jahid',
+  displayName: '',
   baseCurrency: 'GBP',
 };
 

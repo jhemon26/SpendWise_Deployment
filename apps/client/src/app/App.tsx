@@ -14,6 +14,7 @@ import type { SyncEngine } from '../core/sync/engine.js';
 import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
 import { Home, Activity, Budgets, Insights, Profile, type ScreenData, type TxFilter } from './screens.js';
+import { initialsOf, greetingFor } from '../design-system/components.js';
 
 type Tab = 'home' | 'activity' | 'budgets' | 'insights' | 'profile';
 
@@ -202,8 +203,8 @@ export function App(): JSX.Element {
 
   const title: Record<Tab, [string, string]> = {
     home: [
-      `Hi, ${state.displayName}`,
-      `${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · ${d.daysLeft} ${dayWord} left`,
+      greetingFor(state.displayName),
+      now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
     ],
     activity: ['Activity', `${monthTxCount} ${monthTxCount === 1 ? 'transaction' : 'transactions'} this month`],
     budgets: ['Budgets', `${monthLong} · resets in ${d.daysLeft} ${dayWord}`],
@@ -263,7 +264,7 @@ export function App(): JSX.Element {
           <span style={{
             width: '100%', height: '100%', borderRadius: 'var(--r-pill)', background: 'var(--surface)',
             color: '#fff', display: 'grid', placeItems: 'center', fontSize: 'var(--fs-sm)', fontWeight: 800,
-          }}>{state.displayName.slice(0, 1).toUpperCase()}</span>
+          }}>{initialsOf(state.displayName)}</span>
         </button>
       </header>
 

@@ -1,5 +1,5 @@
 import { formatMoney, formatSignedMoney, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
-import { Bar, Card, CardHead, Chip, Empty, Gauge, Icon } from '../design-system/components.js';
+import { Bar, Card, CardHead, Chip, Empty, Gauge, Icon, initialsOf } from '../design-system/components.js';
 import {
   billsFor, categoryBreakdown, dayLabel, derive, fixedCostsTotalMinor, groupByDay,
   historyAverageMinor, monthHistory, statusOf, STATUS_COLOUR,
@@ -173,19 +173,31 @@ export function Home({
         <Tile label="To save" value={money(save, currency)} foot={saveFoot} tone={saveTone} footTone={saveTone} />
       </div>
 
-      <Card>
-        <CardHead title="Coming up" action={onGoto && <CardAction onClick={() => onGoto('budgets')}>All bills</CardAction>} />
-        {due.length === 0
-          ? <Empty icon="bills" title="Nothing due" body="Every fixed cost this month is paid." />
-          : due.map((b, i) => <BillRow key={b.category.local_id} bill={b} currency={currency} now={now} divider={i > 0} />)}
-      </Card>
-
+      {/* Recent activity sits directly under the number it explains. Bills are
+          a reference list, so they go last and stay compact. */}
       <Card>
         <CardHead title="Recent activity" action={onGoto && <CardAction onClick={() => onGoto('activity')}>See all</CardAction>} />
         {recent.length === 0
           ? <Empty icon="other" title="No activity yet" body="Tap + to record your first transaction." />
           : recent.map((t, i) => <Row key={t.local_id} t={t} cats={categories} banks={banks} onEdit={onEdit} divider={i > 0} />)}
       </Card>
+
+      {due.length > 0 && (
+        <Card style={{ padding: 'var(--s4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s3)', marginBottom: 'var(--s2)' }}>
+            <h2 style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, letterSpacing: '-.01em' }}>
+              Coming up
+              <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>
+                {' '}· {money0(due.reduce((sum, b) => sum + b.amountMinor, 0), currency)}
+              </span>
+            </h2>
+            {onGoto && <CardAction onClick={() => onGoto('budgets')}>All bills</CardAction>}
+          </div>
+          {due.map((b, i) => (
+            <BillRow key={b.category.local_id} bill={b} currency={currency} now={now} divider={i > 0} compact />
+          ))}
+        </Card>
+      )}
     </>
   );
 }
@@ -201,8 +213,8 @@ function CardAction({ onClick, children }: { onClick: () => void; children: Reac
   );
 }
 
-function BillRow({ bill, currency, now, divider, showStatus = false }: {
-  bill: Bill; currency: string; now: Date; divider: boolean; showStatus?: boolean;
+function BillRow({ bill, currency, now, divider, showStatus = false, compact = false }: {
+  bill: Bill; currency: string; now: Date; divider: boolean; showStatus?: boolean; compact?: boolean;
 }): JSX.Element {
   const c = bill.category;
   const when = bill.paid
@@ -213,11 +225,11 @@ function BillRow({ bill, currency, now, divider, showStatus = false }: {
   return (
     <>
       {divider && <div style={{ height: 1, background: 'var(--line)' }} />}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3) 0' }}>
-        <Icon name={c.icon} size={40} colour={c.colour} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: compact ? 'var(--s2) 0' : 'var(--s3) 0' }}>
+        <Icon name={c.icon} size={compact ? 30 : 40} colour={c.colour} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bill.name}</p>
-          <p style={{ fontSize: 'var(--fs-xs)', fontWeight: 500, color: 'var(--text-dim)', marginTop: 3 }}>{when}</p>
+          <p style={{ fontSize: compact ? 'var(--fs-2xs)' : 'var(--fs-xs)', fontWeight: 500, color: 'var(--text-dim)', marginTop: compact ? 1 : 3 }}>{when}</p>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800 }}>{money0(bill.amountMinor, currency)}</p>
@@ -609,8 +621,7 @@ export function Profile({
   categories, banks, transactions, currency, displayName, dayToDayMinor,
   savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
 }: ScreenData): JSX.Element {
-  const initials = displayName.trim().split(/\s+/).slice(0, 2)
-    .map((w) => w[0] ?? '').join('').toUpperCase() || '?';
+  const initials = initialsOf(displayName);
 
   return (
     <>
@@ -626,7 +637,9 @@ export function Profile({
           }}>{initials}</span>
         </div>
         <div style={{ minWidth: 0 }}>
-          <p style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, letterSpacing: '-.03em' }}>{displayName}</p>
+          <p style={{ fontSize: 'var(--fs-xl)', fontWeight: 800, letterSpacing: '-.03em', color: displayName.trim() ? undefined : 'var(--text-dim)' }}>
+            {displayName.trim() || 'Add your name'}
+          </p>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>
             {monthName(now)} · {money0(dayToDayMinor, currency)} day-to-day
           </p>

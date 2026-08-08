@@ -5,6 +5,8 @@ import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
 import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
 import { AuthScreen } from '../features/auth/AuthScreen.js';
+import { Onboarding, type OnboardingResult } from '../features/onboarding/Onboarding.js';
+import { Tour } from '../features/onboarding/Tour.js';
 import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
 import type { SyncEngine } from '../core/sync/engine.js';
@@ -44,6 +46,10 @@ export function App(): JSX.Element {
   const [degraded, setDegraded] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  // Onboarding state is local to the device: a returning user on a new phone
+  // should be greeted, not dropped into an empty-looking app.
+  const [onboarded, setOnboarded] = useState(() => localStorage.getItem('sw.onboarded') === '1');
+  const [showTour, setShowTour] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const state = useApp();
@@ -77,6 +83,40 @@ export function App(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function applyOnboarding(r: OnboardingResult): Promise<void> {
+    state.setSettings({
+      displayName: r.displayName,
+      baseCurrency: r.baseCurrency,
+      dayToDayMinor: r.budgets.reduce((s, b) => s + b.limitMinor, 0) || state.dayToDayMinor,
+      savingsTargetMinor: Math.max(0, r.monthlyIncomeMinor - r.budgets.reduce((s, b) => s + b.limitMinor, 0)),
+    });
+    for (const b of r.budgets) {
+      await state.upsertCategory(db, {
+        name: b.name, icon: b.icon, colour: b.colour, limit_minor: b.limitMinor, is_fixed: false,
+      });
+    }
+    localStorage.setItem('sw.onboarded', '1');
+    setOnboarded(true);
+    setShowTour(true);       // the tour runs over the real, now-populated app
+    engine?.wake();
+  }
+
+  async function signOut(): Promise<void> {
+    engine?.stop();
+    engine = null;
+    // logout() clears the local tokens even if the server call fails — the user
+    // asked to be signed out, so a dropped connection must not leave them
+    // looking signed in.
+    await auth.logout().catch(() => undefined);
+    // The device holds the previous account's rows. Leaving them would show one
+    // person's spending to whoever signs in next on this phone.
+    await db.clear();
+    localStorage.removeItem('sw.onboarded');
+    // Reload rather than resetting each store by hand: nothing in memory can
+    // survive it, so there is no residue to forget about later.
+    location.reload();
+  }
+
   function startSync(): void {
     const setup = createSync(db, DEVICE_ID, API_BASE || undefined, () => {
       // Refresh failed for good — reuse detection may have killed the family.
@@ -106,6 +146,8 @@ export function App(): JSX.Element {
     displayName: state.displayName,
     dayToDayMinor: state.dayToDayMinor,
     onEdit: (t: Transaction) => { setEditing(t); setSheetOpen(true); },
+    // Running purely locally there is no session to end, so Profile hides it.
+    ...(API_BASE && signedIn ? { onSignOut: () => { void signOut(); } } : {}),
   };
 
   const title: Record<Tab, [string, string]> = {
@@ -119,7 +161,26 @@ export function App(): JSX.Element {
   // An API is configured but nobody is signed in: show sign-in. With no API
   // the app runs entirely locally and never asks.
   if (API_BASE && authChecked && !signedIn) {
-    return <AuthScreen auth={auth} onSignedIn={() => { setSignedIn(true); startSync(); }} />;
+    return (
+      <AuthScreen
+        auth={auth}
+        onSignedIn={(isNew) => {
+          setSignedIn(true);
+          startSync();
+          // A brand-new account has nothing to show, so always onboard it.
+          if (isNew) { localStorage.removeItem('sw.onboarded'); setOnboarded(false); }
+        }}
+      />
+    );
+  }
+
+  if (state.ready && !onboarded) {
+    return (
+      <Onboarding
+        onDone={(r) => { void applyOnboarding(r); }}
+        onSkip={() => { localStorage.setItem('sw.onboarded', '1'); setOnboarded(true); setShowTour(true); }}
+      />
+    );
   }
 
   return (
@@ -207,10 +268,12 @@ export function App(): JSX.Element {
         }}
       />
 
-      <nav aria-label="Main" style={{
+      {showTour && <Tour onDone={() => { setShowTour(false); localStorage.setItem('sw.tour', '1'); }} />}
+
+      <nav aria-label="Main" data-tour="tabs" style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30, height: 84, paddingBottom: 12,
         display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', alignItems: 'center',
-        background: 'rgba(6,7,10,.94)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--line)',
+        background: 'color-mix(in srgb, var(--bg) 94%, transparent)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--line)',
       }}>
         {TABS.slice(0, 2).map((t) => (
           <button
@@ -234,6 +297,7 @@ export function App(): JSX.Element {
         <button
           onClick={() => { setEditing(null); setSheetOpen(true); }}
           aria-label="Add transaction"
+          data-tour="add"
           style={{
             width: 56, height: 56, borderRadius: 'var(--r-pill)', justifySelf: 'center', border: 0,
             background: 'linear-gradient(135deg,var(--brand-cyan) 0%,var(--brand) 55%,var(--brand-purple) 100%)',

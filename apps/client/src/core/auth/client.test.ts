@@ -70,6 +70,11 @@ describe('phone sign-in', () => {
     await expect(c.sendOtp('+447700900000')).rejects.toMatchObject({ code: 'rate_limited_target' });
   });
 
+  it('surfaces a clearer message when the server is unreachable', async () => {
+    const c = client(() => { throw new Error('ECONNREFUSED'); });
+    await expect(c.sendOtp('+447700900000')).rejects.toMatchObject({ code: 'network_error' });
+  });
+
   it('surfaces a nested Nest error code', async () => {
     const c = client(() => json({ message: { code: 'blocked_prefix' } }, 400));
     await expect(c.sendOtp('+8811999999')).rejects.toMatchObject({ code: 'blocked_prefix' });

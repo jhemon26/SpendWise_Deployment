@@ -14,6 +14,8 @@ export interface ScreenData {
   dayToDayMinor: number;
   /** Tap a transaction row to edit it. Absent in read-only contexts. */
   onEdit?: ((t: Transaction) => void) | undefined;
+  /** Absent when running purely locally — there is no session to end. */
+  onSignOut?: (() => void) | undefined;
 }
 
 const money = (minor: number, cur: string): string => formatMoney(minor, cur);
@@ -45,7 +47,7 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s4)' }}>
           <div style={{ minWidth: 0 }}>
-            <p className="num" data-testid="safe-to-spend" style={{
+            <p className="num" data-testid="safe-to-spend" data-tour="safe-to-spend" style={{
               fontSize: 'var(--fs-hero)', fontWeight: 800, letterSpacing: '-.035em',
               lineHeight: 1.05, color: d.leftMinor < 0 ? 'var(--danger)' : undefined,
             }}>
@@ -56,7 +58,7 @@ export function Home({ transactions, categories, d, currency, dayToDayMinor, onE
               {' '}a day for {d.daysLeft} {d.daysLeft === 1 ? 'day' : 'days'}
             </p>
           </div>
-          <Gauge pct={d.spentPct} datePct={d.datePct} colour={STATUS_COLOUR[st]} />
+          <Gauge pct={d.spentPct} datePct={d.datePct} colour={STATUS_COLOUR[st]} tourId="gauge" />
         </div>
 
         <div style={{
@@ -294,7 +296,7 @@ export function Insights({ categories, d, currency }: ScreenData): JSX.Element {
 
 /* ── Profile ──────────────────────────────────────────────────────────── */
 
-export function Profile({ categories, currency, displayName, dayToDayMinor, d }: ScreenData): JSX.Element {
+export function Profile({ categories, currency, displayName, dayToDayMinor, d, onSignOut }: ScreenData): JSX.Element {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s4)', padding: 'var(--s2) 0 var(--s5)' }}>
@@ -333,12 +335,21 @@ export function Profile({ categories, currency, displayName, dayToDayMinor, d }:
         ))}
       </Card>
 
-      <Card>
-        <CardHead title="Data" />
-        <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
-          Everything is stored on this device first and synced when you are online.
-        </p>
-      </Card>
+      {onSignOut && (
+        <Card>
+          <button
+            type="button"
+            onClick={onSignOut}
+            style={{
+              width: '100%', minHeight: 48, border: 0, borderRadius: 'var(--r-md)', cursor: 'pointer',
+              background: 'var(--danger-soft)', color: 'var(--danger)',
+              fontSize: 'var(--fs-sm)', fontWeight: 700,
+            }}
+          >
+            Sign out
+          </button>
+        </Card>
+      )}
     </>
   );
 }

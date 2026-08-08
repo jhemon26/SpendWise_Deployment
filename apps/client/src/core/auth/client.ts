@@ -76,6 +76,11 @@ export class AuthClient {
     return new AuthError(`auth failed (${res.status})`, code, res.status);
   }
 
+  private offlineError(fallback: string, cause: unknown): AuthError {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return new AuthError(message || fallback, fallback, 0);
+  }
+
   private adopt(body: { access_token: string; refresh_token?: string; new_account?: boolean }): AuthedUser {
     // On web there is no refresh token in the body by design — the cookie holds
     // it. Storing the empty string keeps the store's shape simple; the
@@ -86,20 +91,30 @@ export class AuthClient {
 
   /** Step one of phone sign-in. The code is never returned — it goes by SMS. */
   async sendOtp(phoneE164: string): Promise<{ challengeId: string; expiresIn: number }> {
-    const res = await this.post('/v1/auth/otp/send', { phone_e164: phoneE164 });
-    if (!res.ok) throw await this.fail(res, 'otp_send_failed');
-    const b = (await res.json()) as { challenge_id: string; expires_in: number };
-    return { challengeId: b.challenge_id, expiresIn: b.expires_in };
+    try {
+      const res = await this.post('/v1/auth/otp/send', { phone_e164: phoneE164 });
+      if (!res.ok) throw await this.fail(res, 'otp_send_failed');
+      const b = (await res.json()) as { challenge_id: string; expires_in: number };
+      return { challengeId: b.challenge_id, expiresIn: b.expires_in };
+    } catch (err) {
+      if (err instanceof AuthError) throw err;
+      throw this.offlineError('network_error', err);
+    }
   }
 
   async verifyOtp(challengeId: string, code: string): Promise<AuthedUser> {
-    const res = await this.post('/v1/auth/otp/verify', {
-      challenge_id: challengeId,
-      code,
-      device_id: this.deviceId,
-    });
-    if (!res.ok) throw await this.fail(res, 'otp_verify_failed');
-    return this.adopt(await res.json() as { access_token: string });
+    try {
+      const res = await this.post('/v1/auth/otp/verify', {
+        challenge_id: challengeId,
+        code,
+        device_id: this.deviceId,
+      });
+      if (!res.ok) throw await this.fail(res, 'otp_verify_failed');
+      return this.adopt(await res.json() as { access_token: string });
+    } catch (err) {
+      if (err instanceof AuthError) throw err;
+      throw this.offlineError('network_error', err);
+    }
   }
 
   async oidcCallback(provider: 'google' | 'apple', idToken: string, nonce: string): Promise<AuthedUser> {

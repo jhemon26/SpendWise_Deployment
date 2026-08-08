@@ -1,0 +1,330 @@
+import { useMemo, useState } from 'react';
+import { formatMoney, toMinor } from '@spendwise/shared-types';
+import { Icon } from '../../design-system/components.js';
+
+/**
+ * First run (ARCHITECTURE §3.5).
+ *
+ * A budgeting app is at its worst on day one: every chart empty, every total
+ * zero, no way to tell whether it works. This collects just enough to make the
+ * app real — a name, what comes in, and what each category is worth — then
+ * hands over to a short tour.
+ *
+ * Every step is skippable. An onboarding you cannot escape is a reason to
+ * delete the app, and each answer has a defensible default.
+ */
+
+export interface OnboardingResult {
+  displayName: string;
+  baseCurrency: string;
+  monthlyIncomeMinor: number;
+  budgets: Array<{ name: string; icon: string; colour: string; limitMinor: number }>;
+}
+
+export interface OnboardingProps {
+  onDone: (result: OnboardingResult) => void;
+  onSkip: () => void;
+}
+
+const CURRENCIES = ['GBP', 'EUR', 'USD'] as const;
+
+/** Offered as suggestions, not a fixed list — everything is editable later. */
+const SUGGESTED = [
+  { name: 'Groceries',  icon: 'groceries',   colour: '#14B8A6', share: 0.16 },
+  { name: 'Eating out', icon: 'dining',      colour: '#FB923C', share: 0.06 },
+  { name: 'Transport',  icon: 'transport',   colour: '#22D3EE', share: 0.05 },
+  { name: 'Shopping',   icon: 'shopping',    colour: '#EC4899', share: 0.05 },
+  { name: 'Fun',        icon: 'fun',         colour: '#EAB308', share: 0.04 },
+  { name: 'Home',       icon: 'home',        colour: '#94A3B8', share: 0.05 },
+  { name: 'Health',     icon: 'health',      colour: '#F472B6', share: 0.03 },
+  { name: 'Subscriptions', icon: 'subscription', colour: '#38BDF8', share: 0.03 },
+];
+
+type Step = 0 | 1 | 2 | 3 | 4;
+
+export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
+  const [step, setStep] = useState<Step>(0);
+  const [name, setName] = useState('');
+  const [currency, setCurrency] = useState<string>('GBP');
+  const [income, setIncome] = useState('');
+  const [chosen, setChosen] = useState<string[]>(SUGGESTED.slice(0, 5).map((c) => c.name));
+  const [limits, setLimits] = useState<Record<string, string>>({});
+
+  const incomeMinor = useMemo(() => {
+    try { return income ? toMinor(income, currency) : 0; } catch { return 0; }
+  }, [income, currency]);
+
+  /* Suggested limits are derived from what they actually earn, so the numbers
+     look like their life rather than a generic template. */
+  function suggestedFor(name: string): number {
+    const c = SUGGESTED.find((s) => s.name === name);
+    if (!c || incomeMinor <= 0) return 0;
+    return Math.round((incomeMinor * c.share) / 100) * 100; // round to a whole unit
+  }
+
+  function limitFor(name: string): number {
+    const typed = limits[name];
+    if (typed !== undefined && typed !== '') {
+      try { return toMinor(typed, currency); } catch { return 0; }
+    }
+    return suggestedFor(name);
+  }
+
+  const totalBudget = chosen.reduce((s, n) => s + limitFor(n), 0);
+
+  function finish(): void {
+    onDone({
+      displayName: name.trim() || 'there',
+      baseCurrency: currency,
+      monthlyIncomeMinor: incomeMinor,
+      budgets: chosen.map((n) => {
+        const c = SUGGESTED.find((s) => s.name === n)!;
+        return { name: c.name, icon: c.icon, colour: c.colour, limitMinor: limitFor(n) };
+      }),
+    });
+  }
+
+  const next = (): void => setStep((s) => Math.min(4, s + 1) as Step);
+  const back = (): void => setStep((s) => Math.max(0, s - 1) as Step);
+
+  return (
+    <main style={page}>
+      <div style={shell}>
+        {step > 0 && (
+          <div style={progressRow} aria-hidden="true">
+            {[1, 2, 3, 4].map((i) => (
+              <i key={i} style={{ ...bar, background: i <= step ? 'var(--brand)' : 'var(--surface-3)' }} />
+            ))}
+          </div>
+        )}
+
+        {/* ── 0. welcome ─────────────────────────────────────────────── */}
+        {step === 0 && (
+          <div style={card}>
+            <img src="/icon-192.png" alt="" width={72} height={72} style={{ borderRadius: 20, marginBottom: 'var(--s4)' }} />
+            <h1 style={h1}>Welcome to SpendWise</h1>
+            <p style={lede}>
+              Three quick questions and your budget is ready. It takes about a minute,
+              and you can change any of it later.
+            </p>
+            <ul style={list}>
+              {[
+                ['Know what you can spend today', 'Not just what you spent last month.'],
+                ['Works with no signal', 'Everything saves on your phone first.'],
+                ['Private by default', 'No bank logins, no adverts, no tracking.'],
+              ].map(([t, s]) => (
+                <li key={t} style={listItem}>
+                  <span style={tick}>✓</span>
+                  <span><b style={{ display: 'block' }}>{t}</b><span style={{ color: 'var(--text-dim)' }}>{s}</span></span>
+                </li>
+              ))}
+            </ul>
+            <button type="button" onClick={next} style={primary(false)}>Get started</button>
+            <button type="button" onClick={onSkip} style={ghost}>Skip for now</button>
+          </div>
+        )}
+
+        {/* ── 1. name ────────────────────────────────────────────────── */}
+        {step === 1 && (
+          <div style={card}>
+            <h1 style={h1}>What should we call you?</h1>
+            <p style={lede}>Just so the app feels like yours. First name is plenty.</p>
+            <input
+              autoFocus value={name} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
+              placeholder="Jahid" aria-label="Your name" autoComplete="given-name"
+              maxLength={24} style={field}
+            />
+            <button type="button" onClick={next} style={primary(false)}>Continue</button>
+            <button type="button" onClick={next} style={ghost}>Skip</button>
+          </div>
+        )}
+
+        {/* ── 2. earnings ────────────────────────────────────────────── */}
+        {step === 2 && (
+          <div style={card}>
+            <h1 style={h1}>What comes in each month?</h1>
+            <p style={lede}>
+              Take-home pay, after tax. This is only used to work out what is safe to
+              spend — it never leaves your device unencrypted.
+            </p>
+
+            <div style={segRow} role="group" aria-label="Currency">
+              {CURRENCIES.map((c) => (
+                <button
+                  key={c} type="button" onClick={() => setCurrency(c)}
+                  aria-pressed={currency === c}
+                  style={seg(currency === c)}
+                >{c}</button>
+              ))}
+            </div>
+
+            <div style={amountRow}>
+              <span style={amountCur}>{formatMoney(0, currency).replace(/[\d.,\s]/g, '')}</span>
+              <input
+                autoFocus inputMode="decimal" value={income}
+                onChange={(e) => setIncome(e.target.value.replace(/[^0-9.]/g, '').slice(0, 9))}
+                onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
+                placeholder="0" aria-label="Monthly income"
+                style={amountInput} size={Math.max(1, income.length || 1)}
+              />
+            </div>
+
+            <button type="button" onClick={next} style={primary(false)}>Continue</button>
+            <button type="button" onClick={next} style={ghost}>I'd rather not say</button>
+          </div>
+        )}
+
+        {/* ── 3. categories ──────────────────────────────────────────── */}
+        {step === 3 && (
+          <div style={card}>
+            <h1 style={h1}>What do you spend on?</h1>
+            <p style={lede}>Pick the ones that matter. You can add more any time.</p>
+            <div style={grid}>
+              {SUGGESTED.map((c) => {
+                const on = chosen.includes(c.name);
+                return (
+                  <button
+                    key={c.name} type="button" aria-pressed={on}
+                    onClick={() => setChosen((p) => on ? p.filter((n) => n !== c.name) : [...p, c.name])}
+                    style={cell(on)}
+                  >
+                    <Icon name={c.icon} size={34} colour={c.colour} />
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>{c.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" disabled={chosen.length === 0} onClick={next} style={primary(chosen.length === 0)}>
+              Continue with {chosen.length}
+            </button>
+          </div>
+        )}
+
+        {/* ── 4. budgets ─────────────────────────────────────────────── */}
+        {step === 4 && (
+          <div style={card}>
+            <h1 style={h1}>How much for each?</h1>
+            <p style={lede}>
+              {incomeMinor > 0
+                ? 'Starting points based on what you earn. Adjust anything that looks wrong.'
+                : 'Set a monthly limit for each. Leave any at zero to just track it.'}
+            </p>
+
+            <div style={{ display: 'grid', gap: 10, marginBottom: 'var(--s4)' }}>
+              {chosen.map((n) => {
+                const c = SUGGESTED.find((s) => s.name === n)!;
+                return (
+                  <label key={n} style={budgetRow}>
+                    <Icon name={c.icon} size={30} colour={c.colour} />
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{c.name}</span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>
+                      {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                    </span>
+                    <input
+                      inputMode="decimal"
+                      value={limits[n] ?? (suggestedFor(n) ? String(suggestedFor(n) / 100) : '')}
+                      onChange={(e) => setLimits((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                      aria-label={`${n} monthly limit`}
+                      style={budgetInput}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+
+            <div style={totalRow}>
+              <span>Day-to-day budget</span>
+              <b className="num">{formatMoney(totalBudget, currency)}</b>
+            </div>
+            {incomeMinor > 0 && (
+              <p style={{ ...hint, marginBottom: 'var(--s3)' }}>
+                {totalBudget > incomeMinor
+                  ? `That's more than you earn — ${formatMoney(totalBudget - incomeMinor, currency)} over.`
+                  : `Leaves ${formatMoney(incomeMinor - totalBudget, currency)} for bills and saving.`}
+              </p>
+            )}
+
+            <button type="button" onClick={finish} style={primary(false)}>Finish setup</button>
+            <button type="button" onClick={back} style={ghost}>Back</button>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+/* ── styles ─────────────────────────────────────────────────────────────── */
+
+const page: React.CSSProperties = {
+  minHeight: '100dvh',
+  background: 'radial-gradient(circle at 15% 0%, rgba(99,102,241,.16), transparent 42%), var(--bg)',
+  color: 'var(--text)', fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
+  display: 'grid', placeItems: 'center', padding: 'var(--s5)',
+};
+const shell: React.CSSProperties = { width: 'min(100%, 430px)', display: 'grid', gap: 'var(--s4)' };
+const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 };
+const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };
+const card: React.CSSProperties = {
+  padding: 'var(--s6) var(--s5)', borderRadius: 28,
+  background: 'var(--surface)',
+  border: '1px solid var(--line)', boxShadow: 'var(--shadow)', display: 'grid', gap: 'var(--s3)',
+};
+const h1: React.CSSProperties = { fontSize: 25, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15 };
+const lede: React.CSSProperties = { fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.55 };
+const list: React.CSSProperties = { display: 'grid', gap: 'var(--s3)', listStyle: 'none', margin: 'var(--s2) 0 var(--s3)' };
+const listItem: React.CSSProperties = { display: 'flex', gap: 12, fontSize: 'var(--fs-sm)', lineHeight: 1.45 };
+const tick: React.CSSProperties = {
+  width: 22, height: 22, flexShrink: 0, borderRadius: 999, display: 'grid', placeItems: 'center',
+  background: 'rgba(16,185,129,.16)', color: 'var(--positive)', fontSize: 12, fontWeight: 800,
+};
+const field: React.CSSProperties = {
+  width: '100%', background: 'var(--surface-2)', border: '1px solid var(--line)',
+  borderRadius: 'var(--r-md)', padding: '16px var(--s4)', fontSize: 17, fontWeight: 600, color: 'var(--text)', outline: 'none',
+};
+const segRow: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: 4,
+  background: 'var(--surface-2)', borderRadius: 999,
+};
+const seg = (on: boolean): React.CSSProperties => ({
+  padding: '10px 0', borderRadius: 999, border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 800,
+  background: on ? 'rgba(99,102,241,.9)' : 'transparent', color: on ? '#fff' : 'var(--text-dim)',
+});
+const amountRow: React.CSSProperties = { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 2, padding: 'var(--s3) 0' };
+const amountCur: React.CSSProperties = { fontSize: 30, fontWeight: 800, color: 'var(--text-dim)' };
+const amountInput: React.CSSProperties = {
+  background: 'none', border: 0, outline: 'none', fontSize: 46, fontWeight: 800,
+  letterSpacing: '-.04em', fontVariantNumeric: 'tabular-nums', color: 'var(--text)', minWidth: '1ch', padding: 0,
+};
+const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 };
+const cell = (on: boolean): React.CSSProperties => ({
+  display: 'grid', justifyItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 16, cursor: 'pointer',
+  background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
+  border: `1.5px solid ${on ? 'rgba(99,102,241,.55)' : 'transparent'}`,
+  color: on ? 'var(--text)' : 'var(--text-dim)',
+});
+const budgetRow: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+  background: 'var(--surface-2)', borderRadius: 14,
+};
+const budgetInput: React.CSSProperties = {
+  width: 88, textAlign: 'right', background: 'transparent', border: 0, outline: 'none',
+  fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: 'var(--text)',
+};
+const totalRow: React.CSSProperties = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  padding: 'var(--s3) var(--s4)', borderRadius: 14, background: 'var(--brand-soft)',
+  border: '1px solid rgba(99,102,241,.24)', fontSize: 'var(--fs-sm)', fontWeight: 700,
+};
+const hint: React.CSSProperties = { fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)' };
+const baseBtn: React.CSSProperties = {
+  width: '100%', minHeight: 52, borderRadius: 'var(--r-md)', border: 0,
+  fontSize: 'var(--fs-md)', fontWeight: 700, cursor: 'pointer',
+};
+const primary = (disabled: boolean): React.CSSProperties => ({
+  ...baseBtn, background: 'var(--brand)', color: '#fff',
+  opacity: disabled ? 0.35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
+});
+const ghost: React.CSSProperties = {
+  ...baseBtn, minHeight: 44, background: 'transparent', color: 'var(--text-dim)', fontWeight: 600,
+};

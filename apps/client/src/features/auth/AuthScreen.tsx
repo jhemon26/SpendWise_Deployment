@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
+import { GOOGLE_CLIENT_ID, newNonce, renderGoogleButton } from './google.js';
 
 /**
  * Sign-in (ARCHITECTURE §9.1).
@@ -30,6 +31,8 @@ type Stage = 'choose' | 'phone' | 'code';
 const FRIENDLY: Record<string, string> = {
   network_error: "Can't reach SpendWise. Check your connection and try again.",
   otp_send_failed: "That number didn't work. Check it and try again.",
+  oidc_failed: 'Google could not verify that sign-in. Please try again.',
+  nonce_mismatch: 'That sign-in expired. Please try again.',
   rate_limited_target: 'Too many codes for that number. Try again in an hour.',
   rate_limited_ip: 'Too many sign-in attempts. Try again later.',
   spend_ceiling: 'Text messages are unavailable right now. Please try again shortly.',
@@ -57,6 +60,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const googleSlot = useRef<HTMLDivElement | null>(null);
+  // One nonce per mounted screen; the server checks it against the token.
+  const nonce = useRef<string>(newNonce());
 
   const boxes = useRef<Array<HTMLInputElement | null>>([]);
   const code = digits.join('');
@@ -73,6 +79,25 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
+
+  /* Google renders its own button, so this waits for the slot to exist. */
+  useEffect(() => {
+    if (stage !== 'choose' || !GOOGLE_CLIENT_ID) return;
+    const el = googleSlot.current;
+    if (!el) return;
+    void renderGoogleButton(
+      el,
+      nonce.current,
+      (idToken) => {
+        setBusy(true); setError(null);
+        auth.oidcCallback('google', idToken, nonce.current)
+          .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
+          .catch((e: unknown) => { say(e); setBusy(false); });
+      },
+      () => setError('Google sign-in is unavailable right now. Use your mobile number.'),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
   const say = (err: unknown): void => {
     const c = (err as { code?: string }).code ?? '';
@@ -161,7 +186,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              <Provider kind="google" ready={oidcAvailable} onUnavailable={setSoon} />
+              {GOOGLE_CLIENT_ID
+                ? <div ref={googleSlot} style={{ display: 'grid', placeItems: 'center', minHeight: 44 }} />
+                : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
               <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
               {soon && (
                 <p role="status" style={soonNote}>

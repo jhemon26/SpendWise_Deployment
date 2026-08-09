@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Query, Req, UsePipes } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Query, Req, UsePipes } from '@nestjs/common';
+import { z } from 'zod';
 import {
   syncPushRequestSchema,
   syncPullQuerySchema,
@@ -12,6 +13,19 @@ import { Db } from '../db/db.js';
 import { PgSyncRepo } from './sync.repo.pg.js';
 import { SyncService } from './sync.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import type { UserSettings } from './sync.repo.js';
+
+/** Bounded on every field: this lands in a database and then in a UI. */
+const settingsSchema = z.object({
+  display_name: z.string().max(48).default(''),
+  base_currency: z.string().length(3).default('GBP'),
+  day_to_day_minor: z.number().int().nonnegative().max(1_000_000_000).default(0),
+  savings_target_minor: z.number().int().nonnegative().max(1_000_000_000).default(0),
+  avatar_emoji: z.string().max(32).default(''),
+  // Checked here as well as by the column constraint: it is written straight
+  // into an inline style on the client.
+  avatar_colour: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#6366F1'),
+});
 
 /**
  * The service is built PER REQUEST, inside `Db.withUser`.
@@ -70,4 +84,40 @@ export class SyncController {
       return svc.pull(userId, q.since ? new Date(q.since) : new Date(0), q.cursor ?? null);
     });
   }
+  /**
+   * Device-level preferences: name, budgets, avatar.
+   *
+   * Deliberately NOT part of the sync envelope. These are single scalars with
+   * last-write-wins semantics; putting them through the transaction merge
+   * machinery — versions, conflicts, idempotency keys — would be ceremony for
+   * values that cannot meaningfully conflict.
+   */
+  @Get('settings')
+  async getSettings(@Req() req: AuthedRequest): Promise<{ settings: UserSettings | null }> {
+    const userId = req.user!.id;
+    const settings = await this.db.withUser(userId, async (c) =>
+      new PgSyncRepo(c).getSettings(userId),
+    );
+    return { settings };
+  }
+
+  @Put('settings')
+  @UsePipes(new ZodValidationPipe(settingsSchema))
+  async putSettings(
+    @Req() req: AuthedRequest,
+    @Body() body: z.infer<typeof settingsSchema>,
+  ): Promise<{ ok: true }> {
+    const userId = req.user!.id;
+    await this.db.withUser(userId, async (c) => {
+      await new PgSyncRepo(c).putSettings(userId, {
+        ...body,
+        // The client's clock decides ordering between its own writes, but the
+        // stored stamp is ours — a device running fast must not be able to pin
+        // its settings as permanently newest.
+        updated_at: new Date().toISOString(),
+      });
+    });
+    return { ok: true };
+  }
+
 }

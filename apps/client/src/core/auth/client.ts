@@ -65,6 +65,31 @@ export class AuthClient {
     });
   }
 
+  /**
+   * An authenticated request using the in-memory access token.
+   *
+   * For the small endpoints that sit outside the sync engine. On a 401 it tries
+   * refresh ONCE and replays — the access token is short-lived, so an expired
+   * one during normal use is routine, not an error worth surfacing.
+   */
+  async authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    const send = (): Promise<Response> => this.doFetch(url, {
+      ...init,
+      headers: {
+        ...(init.headers as Record<string, string> | undefined),
+        ...(this.tokens.getAccessToken() ? { Authorization: `Bearer ${this.tokens.getAccessToken()}` } : {}),
+      },
+      credentials: 'include',
+    });
+
+    const first = await send();
+    if (first.status !== 401) return first;
+
+    const refreshed = await this.restore();
+    if (!refreshed) return first;
+    return send();
+  }
+
   private async fail(res: Response, fallback: string): Promise<AuthError> {
     let code = fallback;
     try {

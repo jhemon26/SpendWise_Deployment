@@ -113,6 +113,16 @@ function loadSettings(): Settings {
   }
 }
 
+/** The persisted subset, as one object, so the store and the wire cannot drift. */
+export const settingsOf = (s: AppState): Settings => ({
+  displayName: s.displayName,
+  baseCurrency: s.baseCurrency,
+  dayToDayMinor: s.dayToDayMinor,
+  savingsTargetMinor: s.savingsTargetMinor,
+  avatarEmoji: s.avatarEmoji,
+  avatarColour: s.avatarColour,
+});
+
 export function clearSettings(): void {
   // The theme is a device preference, not account data: someone who set the app
   // to light should not be flashed a dark screen because they signed out.

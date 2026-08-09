@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toMinor, fromMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
-import { useApp, clearSettings } from '../core/store.js';
+import { useApp, clearSettings, settingsOf } from '../core/store.js';
 import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
 import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
@@ -11,6 +11,7 @@ import { ValueEditor, CategoryEditor, BankEditor, AvatarEditor, type ValueEdit }
 import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
 import { subjectOf } from '../core/auth/subject.js';
+import { fetchSettings, saveSettings } from '../core/settings.remote.js';
 import type { SyncEngine } from '../core/sync/engine.js';
 import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
@@ -195,6 +196,14 @@ export function App(): JSX.Element {
       await state.hydrate(db);
     }
     localStorage.setItem('sw.account', sub);
+
+    /* Adopt the server's settings so a new device arrives set up. Only when
+       this device has none of its own — otherwise signing in on the phone you
+       just configured would overwrite what you set with an older copy. */
+    const remote = await fetchSettings(auth, API_BASE);
+    if (remote && !localStorage.getItem('sw.settings')) {
+      state.setSettings(remote);
+    }
   }
 
   function startSync(): void {
@@ -206,6 +215,15 @@ export function App(): JSX.Element {
     });
     if (setup) { engine = setup.engine; engine.start(); engine.wake(); }
   }
+
+  /* Mirror settings to the server whenever they change, so a second device
+     picks them up. Skipped until signed in and until the first restore has
+     run, or we would immediately overwrite the server with local defaults. */
+  const settingsSnapshot = JSON.stringify(settingsOf(state));
+  useEffect(() => {
+    if (!API_BASE || !signedIn || !state.ready) return;
+    void saveSettings(auth, API_BASE, settingsOf(useApp.getState()));
+  }, [settingsSnapshot, signedIn, state.ready]);
 
   const now = useMemo(() => new Date(), []);
   // Scheduled fixed costs, not what has been paid — see MonthContext.

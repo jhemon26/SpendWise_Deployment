@@ -373,7 +373,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
 const page: React.CSSProperties = {
   position: 'relative', minHeight: '100dvh', overflow: 'hidden',
   background:
-    'radial-gradient(120% 80% at 50% -10%, #1A1F33 0%, #0E1220 38%, var(--bg) 78%)',
+    'var(--page-bg)',
   color: 'var(--text)', fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
   display: 'grid', placeItems: 'center', padding: 'var(--s5)',
 };

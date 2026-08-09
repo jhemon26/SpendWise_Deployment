@@ -33,6 +33,8 @@ export interface ScreenData {
   onEditCategory?: ((c: Category | null) => void) | undefined;
   onEditBank?: ((b: Bank | null) => void) | undefined;
   onEditAvatar?: (() => void) | undefined;
+  theme?: 'system' | 'light' | 'dark' | undefined;
+  onTheme?: ((t: 'system' | 'light' | 'dark') => void) | undefined;
   avatarEmoji?: string | undefined;
   avatarColour?: string | undefined;
 }
@@ -624,7 +626,7 @@ export function Insights({ categories, transactions, d, currency, now }: ScreenD
 export function Profile({
   categories, banks, transactions, currency, displayName, dayToDayMinor,
   savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
-  onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1',
+  onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1', theme = 'system', onTheme,
 }: ScreenData): JSX.Element {
   const flex = categories.filter((c) => !c.deleted_at && !c.is_fixed);
   const fixed = categories.filter((c) => !c.deleted_at && c.is_fixed);
@@ -672,6 +674,38 @@ export function Profile({
           )}
         </div>
       </Card>
+
+      {onTheme && (
+        <Card>
+          <CardHead title="Appearance" />
+          <div role="group" aria-label="Theme" style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4,
+            background: 'var(--surface-2)', borderRadius: 'var(--r-pill)', padding: 4,
+          }}>
+            {([['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']] as const).map(([v, text]) => {
+              const on = theme === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onTheme(v)}
+                  style={{
+                    padding: '10px 0', borderRadius: 'var(--r-pill)', border: 0, cursor: 'pointer',
+                    fontSize: 'var(--fs-xs)', fontWeight: 800,
+                    background: on ? 'var(--brand)' : 'transparent',
+                    color: on ? '#fff' : 'var(--text-dim)',
+                    transition: 'background .15s ease, color .15s ease',
+                  }}
+                >{text}</button>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 'var(--s2)' }}>
+            Auto follows your device setting.
+          </p>
+        </Card>
+      )}
 
       <Card>
         <CardHead title="Your money" />

@@ -108,3 +108,38 @@ describe('avatar', () => {
     expect(reloaded.useApp.getState().avatarEmoji).toBe('🐼');
   });
 });
+
+describe('theme', () => {
+  it('persists the choice', () => {
+    mod.useApp.getState().setSettings({ theme: 'light' });
+    expect(read()['theme']).toBe('light');
+  });
+
+  it('mirrors it to its own key for the pre-paint boot script', () => {
+    // index.html reads this before React exists; parsing the whole settings
+    // blob there would cost more than it saves.
+    mod.useApp.getState().setSettings({ theme: 'dark' });
+    expect(store.getItem('sw.theme')).toBe('dark');
+  });
+
+  it('survives clearSettings — it is a device preference, not account data', () => {
+    // Signing out must not flash a dark screen at someone who chose light.
+    mod.useApp.getState().setSettings({ theme: 'light' });
+    mod.clearSettings();
+    expect(store.getItem('sw.theme')).toBe('light');
+  });
+
+  it('falls back to system when the stored value is junk', async () => {
+    store.setItem(KEY, JSON.stringify({ theme: 'neon' }));
+    vi.resetModules();
+    const reloaded = await import('./store.js') as StoreModule;
+    expect(reloaded.useApp.getState().theme).toBe('system');
+  });
+
+  it('restores a valid stored theme on load', async () => {
+    store.setItem(KEY, JSON.stringify({ theme: 'dark' }));
+    vi.resetModules();
+    const reloaded = await import('./store.js') as StoreModule;
+    expect(reloaded.useApp.getState().theme).toBe('dark');
+  });
+});

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toMinor, fromMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
-import { useApp, clearSettings } from '../core/store.js';
+import { useApp, clearSettings, applyTheme } from '../core/store.js';
 import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
 import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
@@ -185,6 +185,17 @@ export function App(): JSX.Element {
     if (setup) { engine = setup.engine; engine.start(); engine.wake(); }
   }
 
+  /* On 'system', follow the OS live — someone with a sunset schedule expects
+     the app to turn with everything else, not on next launch. */
+  useEffect(() => {
+    applyTheme(state.theme);
+    if (state.theme !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (): void => applyTheme('system');
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [state.theme]);
+
   const now = useMemo(() => new Date(), []);
   // Scheduled fixed costs, not what has been paid — see MonthContext.
   const fixedCostsMinor = useMemo(
@@ -240,6 +251,8 @@ export function App(): JSX.Element {
     onEditBank: (b) => setBankEdit(b),
     onAddCategory: () => setCatEdit(null),
     onEditAvatar: () => setAvatarOpen(true),
+    theme: state.theme,
+    onTheme: (t) => state.setSettings({ theme: t }),
     avatarEmoji: state.avatarEmoji,
     avatarColour: state.avatarColour,
     // Running purely locally there is no session to end, so Profile hides it.
@@ -276,7 +289,7 @@ export function App(): JSX.Element {
       <main style={{
         minHeight: '100dvh', display: 'grid', placeItems: 'center',
         // Same treatment as the sign-in screen, so the handover is invisible.
-        background: 'radial-gradient(120% 80% at 50% -10%, #1A1F33 0%, #0E1220 38%, var(--bg) 78%)',
+        background: 'var(--page-bg)',
       }}>
         <img src="/icon-192.png" alt="" width={56} height={56}
              style={{ borderRadius: 16, opacity: .9 }} />

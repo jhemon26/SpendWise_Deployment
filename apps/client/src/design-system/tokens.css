@@ -48,6 +48,7 @@
   --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
 
   --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --page-bg: radial-gradient(120% 80% at 50% -10%, #1a1f33 0%, #0e1220 38%, #06070a 78%);
 }
 
 /* Light theme. The prototype was dark-only; production needs both.
@@ -65,6 +66,7 @@
     --text-muted: #545c69;
     --text-dim: #7b8593;
     --shadow: 0 12px 32px -12px rgba(16, 19, 26, 0.18);
+    --page-bg: radial-gradient(120% 80% at 50% -10%, #ffffff 0%, #eef1f7 40%, #f5f6f8 78%);
   }
 }
 

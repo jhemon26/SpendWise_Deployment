@@ -138,21 +138,26 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
       <div style={glow} aria-hidden="true" />
       <div style={shell}>
         {step > 0 && (
-          <div style={progressRow} aria-hidden="true">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <i key={i} style={{ ...bar, background: i <= step ? 'var(--brand)' : 'var(--surface-3)' }} />
-            ))}
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <span style={stepLabel}>Step {step} of 5</span>
+              <button type="button" onClick={onSkip} style={skipLink}>Skip setup</button>
+            </div>
+            <div style={progressRow} aria-hidden="true" role="progressbar">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <i key={i} style={{ ...bar, background: i <= step ? 'var(--brand)' : 'var(--surface-3)' }} />
+              ))}
+            </div>
           </div>
         )}
 
         {/* ── 0. welcome ─────────────────────────────────────────────── */}
         {step === 0 && (
-          <div style={card}>
-            <img src="/icon-192.png" alt="" width={72} height={72} style={{ borderRadius: 20, marginBottom: 'var(--s4)' }} />
+          <div style={{ ...card, textAlign: 'center', justifyItems: 'center' }}>
+            <img src="/icon-192.png" alt="" width={72} height={72} style={{ borderRadius: 20, marginBottom: 'var(--s3)' }} />
             <h1 style={h1}>Welcome to SpendWise</h1>
-            <p style={lede}>A few quick questions to set up your budget.</p>
-            <button type="button" onClick={next} style={primary(false)}>Get started</button>
-            <button type="button" onClick={onSkip} style={ghost}>Skip for now</button>
+            <p style={{ ...lede, maxWidth: '28ch' }}>A few quick questions to set up your budget.</p>
+            <Footer onNext={next} nextLabel="Get started" skip={onSkip} />
           </div>
         )}
 
@@ -167,8 +172,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               placeholder="Jahid" aria-label="Your name" autoComplete="given-name"
               maxLength={24} style={field}
             />
-            <button type="button" onClick={next} style={primary(false)}>Continue</button>
-            <button type="button" onClick={next} style={ghost}>Skip</button>
+            <Footer onBack={back} onNext={next} nextLabel="Continue" skip={next} />
           </div>
         )}
 
@@ -199,8 +203,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               />
             </div>
 
-            <button type="button" onClick={next} style={primary(false)}>Continue</button>
-            <button type="button" onClick={next} style={ghost}>Skip</button>
+            <Footer onBack={back} onNext={next} nextLabel="Continue" skip={next} />
           </div>
         )}
 
@@ -224,9 +227,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
                 );
               })}
             </div>
-            <button type="button" disabled={chosen.length === 0} onClick={next} style={primary(chosen.length === 0)}>
-              Continue with {chosen.length} {chosen.length === 1 ? 'category' : 'categories'}
-            </button>
+            <Footer onBack={back} onNext={next} disabled={chosen.length === 0}
+                    nextLabel={`Continue with ${chosen.length} ${chosen.length === 1 ? 'category' : 'categories'}`} />
           </div>
         )}
 
@@ -270,8 +272,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               </p>
             )}
 
-            <button type="button" onClick={next} style={primary(false)}>Continue</button>
-            <button type="button" onClick={back} style={ghost}>Back</button>
+            <Footer onBack={back} onNext={next} nextLabel="Continue" />
           </div>
         )}
 
@@ -359,12 +360,35 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               </p>
             )}
 
-            <button type="button" onClick={finish} style={primary(false)}>Finish setup</button>
-            <button type="button" onClick={back} style={ghost}>Back</button>
+            <Footer onBack={back} onNext={finish} nextLabel="Finish setup" />
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+/** Back and Continue on one row, with an optional skip underneath. */
+function Footer({ onBack, onNext, nextLabel, disabled = false, skip }: {
+  onBack?: (() => void) | undefined;
+  onNext: () => void;
+  nextLabel: string;
+  disabled?: boolean;
+  skip?: (() => void) | undefined;
+}): JSX.Element {
+  return (
+    <div style={{ display: 'grid', gap: 'var(--s2)', marginTop: 'var(--s2)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: onBack ? 'auto 1fr' : '1fr', gap: 'var(--s2)' }}>
+        {onBack && (
+          <button type="button" onClick={onBack} aria-label="Back" style={backBtn}>
+            <svg viewBox="0 0 24 24" width={18} height={18} stroke="currentColor" strokeWidth={2.4}
+                 fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M15 19l-7-7 7-7" /></svg>
+          </button>
+        )}
+        <button type="button" onClick={onNext} disabled={disabled} style={primary(disabled)}>{nextLabel}</button>
+      </div>
+      {skip && <button type="button" onClick={skip} style={ghost}>Skip this step</button>}
+    </div>
   );
 }
 
@@ -385,6 +409,19 @@ const glow: React.CSSProperties = {
 };
 const shell: React.CSSProperties = {
   position: 'relative', zIndex: 1, width: 'min(100%, 400px)', display: 'grid', gap: 'var(--s4)',
+};
+const stepLabel: React.CSSProperties = {
+  fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.07em',
+  textTransform: 'uppercase', color: 'var(--text-dim)',
+};
+const skipLink: React.CSSProperties = {
+  background: 'none', border: 0, padding: 0, cursor: 'pointer',
+  fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-dim)',
+};
+const backBtn: React.CSSProperties = {
+  width: 52, minHeight: 52, borderRadius: 'var(--r-md)', cursor: 'pointer',
+  background: 'var(--surface-3)', border: 0, color: 'var(--text-muted)',
+  display: 'grid', placeItems: 'center',
 };
 const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 };
 const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };

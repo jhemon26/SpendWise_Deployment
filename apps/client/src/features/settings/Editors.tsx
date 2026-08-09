@@ -488,14 +488,10 @@ export function DeleteAccountEditor({ onConfirm, onClose }: {
   return (
     <Scrim onClose={busy ? () => undefined : onClose} centred>
       <p style={title}>Delete your account</p>
-      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s3)' }}>
+      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s4)' }}>
         This removes every transaction, category, budget and setting from your
         account and from this device. It cannot be undone.
       </p>
-      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s4)' }}>
-        Signing in again with the same account will start you from scratch.
-      </p>
-
       <label htmlFor="sw-del" style={{ ...label, marginTop: 0 }}>Type DELETE to confirm</label>
       <input
         id="sw-del"

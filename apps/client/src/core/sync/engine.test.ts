@@ -45,7 +45,7 @@ beforeEach(() => {
     },
     pull: async () => {
       calls.push('pull');
-      return { transactions: [], next_cursor: null, has_more: false, server_time: NOW.toISOString() };
+      return { transactions: [], categories: [], banks: [], next_cursor: null, has_more: false, server_time: NOW.toISOString() };
     },
   };
   engine = new SyncEngine(db, transport, 'd1', { now: () => NOW, random: () => 0.5 });
@@ -146,9 +146,9 @@ describe('pull', () => {
     let n = 0;
     transport.pull = async (_since, cursor) => {
       n++;
-      if (!cursor) return { transactions: [tx()], next_cursor: 'c1', has_more: true, server_time: NOW.toISOString() };
-      if (cursor === 'c1') return { transactions: [tx()], next_cursor: 'c2', has_more: true, server_time: NOW.toISOString() };
-      return { transactions: [tx()], next_cursor: null, has_more: false, server_time: NOW.toISOString() };
+      if (!cursor) return { transactions: [tx()], categories: [], banks: [], next_cursor: 'c1', has_more: true, server_time: NOW.toISOString() };
+      if (cursor === 'c1') return { transactions: [tx()], categories: [], banks: [], next_cursor: 'c2', has_more: true, server_time: NOW.toISOString() };
+      return { transactions: [tx()], categories: [], banks: [], next_cursor: null, has_more: false, server_time: NOW.toISOString() };
     };
     await engine.runOnce();
     expect(n).toBe(3);
@@ -157,7 +157,7 @@ describe('pull', () => {
 
   it('does not loop forever if the server never stops paginating', async () => {
     transport.pull = async () => ({
-      transactions: [], next_cursor: 'always', has_more: true, server_time: NOW.toISOString(),
+      transactions: [], categories: [], banks: [], next_cursor: 'always', has_more: true, server_time: NOW.toISOString(),
     });
     await engine.runOnce(); // must terminate
     expect(engine.getState()).toBe('idle');
@@ -213,7 +213,7 @@ describe('concurrency', () => {
       maxInFlight = Math.max(maxInFlight, inFlight);
       await new Promise((r) => setTimeout(r, 10));
       inFlight--;
-      return { transactions: [], next_cursor: null, has_more: false, server_time: NOW.toISOString() };
+      return { transactions: [], categories: [], banks: [], next_cursor: null, has_more: false, server_time: NOW.toISOString() };
     };
     await Promise.all([engine.runOnce(), engine.runOnce(), engine.runOnce()]);
     expect(maxInFlight).toBe(1);
@@ -229,5 +229,30 @@ describe('timer', () => {
     e.stop();
     vi.useRealTimers();
     expect(calls).toContain('reachable');
+  });
+});
+
+describe('pull applies categories and banks', () => {
+  // Without this the server could hold everything and the device would still
+  // show "Uncategorised" for every row: the client used to discard both.
+  it('writes categories and banks from the pull payload', async () => {
+    transport.pull = async () => ({
+      transactions: [],
+      categories: [{
+        local_id: 'c-1', server_id: 'c-1', created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
+        deleted_at: null, sync_status: 'synced', version: 1, device_id: 'server',
+        name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
+        is_fixed: false, due_day: null,
+      }],
+      banks: [{
+        local_id: 'b-1', server_id: 'b-1', created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
+        deleted_at: null, sync_status: 'synced', version: 1, device_id: 'server',
+        name: 'Monzo', colour: '#FF4D6A',
+      }],
+      next_cursor: null, has_more: false, server_time: NOW.toISOString(),
+    });
+    await engine.runOnce();
+    expect((await db.all('categories')).map((c) => c.name)).toEqual(['Groceries']);
+    expect((await db.all('banks')).map((b) => b.name)).toEqual(['Monzo']);
   });
 });

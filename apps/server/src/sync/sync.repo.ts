@@ -1,4 +1,4 @@
-import type { Transaction } from '@spendwise/shared-types';
+import type { Bank, Category, Transaction } from '@spendwise/shared-types';
 
 /**
  * Persistence seam for the sync engine.
@@ -26,6 +26,16 @@ export interface PullPage {
   has_more: boolean;
 }
 
+export interface UserSettings {
+  display_name: string;
+  base_currency: string;
+  day_to_day_minor: number;
+  savings_target_minor: number;
+  avatar_emoji: string;
+  avatar_colour: string;
+  updated_at: string;
+}
+
 export interface SyncRepo {
   /** Non-null means this batch was already applied; return the stored result. */
   findIdempotent(key: string, userId: string): Promise<IdempotencyRecord | null>;
@@ -44,12 +54,66 @@ export interface SyncRepo {
 
   /** Authoritative ECB rate. Null when we have no rate for that day. */
   getFxRate(base: string, quote: string, on: string): Promise<number | null>;
+
+  /*
+   * Categories and banks are last-write-wins on updated_at. They are small,
+   * user-authored and rarely edited on two devices at once, so the version
+   * negotiation transactions need would cost more than it buys.
+   */
+  putCategory(userId: string, row: Category): Promise<void>;
+  putBank(userId: string, row: Bank): Promise<void>;
+  listCategoriesChangedSince(userId: string, since: Date): Promise<Category[]>;
+  listBanksChangedSince(userId: string, since: Date): Promise<Bank[]>;
+
+  getSettings(userId: string): Promise<UserSettings | null>;
+  putSettings(userId: string, s: UserSettings): Promise<void>;
 }
 
 export class InMemorySyncRepo implements SyncRepo {
   private readonly txs = new Map<string, StoredTransaction>();
   private readonly idem = new Map<string, IdempotencyRecord>();
   private readonly fx = new Map<string, number>();
+  private readonly cats = new Map<string, Category>();
+  private readonly banks = new Map<string, Bank>();
+  private readonly settings = new Map<string, UserSettings>();
+
+  async putCategory(userId: string, row: Category): Promise<void> {
+    const existing = this.cats.get(this.key(userId, row.local_id));
+    // Last write wins, but an older payload must never clobber a newer row —
+    // a retry of a stale batch would otherwise undo an edit.
+    if (existing && existing.updated_at > row.updated_at) return;
+    this.cats.set(this.key(userId, row.local_id), row);
+  }
+
+  async putBank(userId: string, row: Bank): Promise<void> {
+    const existing = this.banks.get(this.key(userId, row.local_id));
+    if (existing && existing.updated_at > row.updated_at) return;
+    this.banks.set(this.key(userId, row.local_id), row);
+  }
+
+  async listCategoriesChangedSince(userId: string, since: Date): Promise<Category[]> {
+    return [...this.cats.entries()]
+      .filter(([k]) => k.startsWith(`${userId}:`))
+      .map(([, v]) => v)
+      .filter((c) => new Date(c.updated_at) > since);
+  }
+
+  async listBanksChangedSince(userId: string, since: Date): Promise<Bank[]> {
+    return [...this.banks.entries()]
+      .filter(([k]) => k.startsWith(`${userId}:`))
+      .map(([, v]) => v)
+      .filter((b) => new Date(b.updated_at) > since);
+  }
+
+  async getSettings(userId: string): Promise<UserSettings | null> {
+    return this.settings.get(userId) ?? null;
+  }
+
+  async putSettings(userId: string, s: UserSettings): Promise<void> {
+    const existing = this.settings.get(userId);
+    if (existing && existing.updated_at > s.updated_at) return;
+    this.settings.set(userId, s);
+  }
 
   private key(userId: string, localId: string): string {
     return `${userId}:${localId}`;

@@ -10,6 +10,7 @@ import { Tour } from '../features/onboarding/Tour.js';
 import { ValueEditor, CategoryEditor, BankEditor, AvatarEditor, type ValueEdit } from '../features/settings/Editors.js';
 import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
+import { subjectOf } from '../core/auth/subject.js';
 import type { SyncEngine } from '../core/sync/engine.js';
 import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
@@ -75,12 +76,18 @@ export function App(): JSX.Element {
       // memory-only, so this is what makes "still signed in" survive a reload.
       if (API_BASE) {
         const restored = await auth.restore();
-        if (restored) { setSignedIn(true); startSync(); }
+        if (restored) {
+          await guardAccount(restored.accessToken);
+          setSignedIn(true);
+          startSync();
+        }
       }
       setAuthChecked(true);
-      // Nobody meets an empty app (ARCHITECTURE §3.5). Real onboarding replaces
-      // this with the setup wizard; the shape of the data is identical.
-      if ((await db.all('transactions')).length === 0) await seedDemo(db);
+      /* Demo rows are for local exploration only. Seeding them into a signed-in
+         account would put fabricated transactions into someone's real finances,
+         and once synced they would spread to every device they own. */
+      const empty = (await db.all('transactions')).length === 0;
+      if (empty && !API_BASE) await seedDemo(db);
       await state.hydrate(db);
     })().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -121,6 +128,18 @@ export function App(): JSX.Element {
     engine?.wake();
   }
 
+  /**
+   * Sign out without destroying anything.
+   *
+   * This previously wiped the local database. That was wrong twice over: it
+   * deleted categories, banks and settings that the server did not yet hold, so
+   * signing out lost them permanently — and it treated logout, which people do
+   * routinely, as if it were "erase my data".
+   *
+   * What actually protects the next person is that a DIFFERENT account's data
+   * is cleared on sign-IN (see onSignedIn), when we know whose device it is.
+   * Signing back in as yourself keeps everything and re-syncs the rest.
+   */
   async function signOut(): Promise<void> {
     engine?.stop();
     engine = null;
@@ -128,14 +147,32 @@ export function App(): JSX.Element {
     // asked to be signed out, so a dropped connection must not leave them
     // looking signed in.
     await auth.logout().catch(() => undefined);
-    // The device holds the previous account's rows. Leaving them would show one
-    // person's spending to whoever signs in next on this phone.
-    await db.clear();
-    localStorage.removeItem('sw.onboarded');
-    clearSettings();
-    // Reload rather than resetting each store by hand: nothing in memory can
-    // survive it, so there is no residue to forget about later.
     location.reload();
+  }
+
+  /**
+   * Clear the device only when it holds SOMEONE ELSE'S data.
+   *
+   * This is the counterpart to sign-out no longer wiping anything. The moment
+   * we know who is signing in, we can tell the two cases apart: the same person
+   * returning (keep everything — much of it may not be on the server yet), or a
+   * different account on a shared phone (wipe, or they would see the previous
+   * person's spending).
+   *
+   * Runs BEFORE sync starts, so nothing from the old account can be pushed up
+   * under the new account's identity.
+   */
+  async function guardAccount(accessToken: string): Promise<void> {
+    const sub = subjectOf(accessToken);
+    if (!sub) return;                       // cannot tell; leave the data alone
+    const previous = localStorage.getItem('sw.account');
+    if (previous && previous !== sub) {
+      await db.clear();
+      clearSettings();
+      localStorage.removeItem('sw.onboarded');
+      await state.hydrate(db);
+    }
+    localStorage.setItem('sw.account', sub);
   }
 
   function startSync(): void {
@@ -234,11 +271,14 @@ export function App(): JSX.Element {
     return (
       <AuthScreen
         auth={auth}
-        onSignedIn={(isNew) => {
-          setSignedIn(true);
-          startSync();
-          // A brand-new account has nothing to show, so always onboard it.
-          if (isNew) { localStorage.removeItem('sw.onboarded'); setOnboarded(false); }
+        onSignedIn={(isNew, accessToken) => {
+          void (async () => {
+            await guardAccount(accessToken);
+            setSignedIn(true);
+            startSync();
+            // A brand-new account has nothing to show, so always onboard it.
+            if (isNew) { localStorage.removeItem('sw.onboarded'); setOnboarded(false); }
+          })();
         }}
       />
     );

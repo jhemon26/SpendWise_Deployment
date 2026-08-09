@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import type { SyncStatus } from '@spendwise/shared-types';
-import type { IdempotencyRecord, PullPage, StoredTransaction, SyncRepo } from './sync.repo.js';
+import type { Bank, Category } from '@spendwise/shared-types';
+import type { IdempotencyRecord, PullPage, StoredTransaction, SyncRepo, UserSettings } from './sync.repo.js';
 
 /**
  * Postgres-backed sync repository.
@@ -187,4 +188,120 @@ export class PgSyncRepo implements SyncRepo {
     );
     return rows[0] ? Number(rows[0].rate) : null;
   }
+  /* ── categories, banks, settings ──────────────────────────────────────
+     Last-write-wins on updated_at. The WHERE clause on the DO UPDATE is what
+     makes a replayed or out-of-order batch harmless: an older row simply does
+     not apply, rather than overwriting a newer edit. */
+
+  async putCategory(userId: string, row: Category): Promise<void> {
+    await this.c.query(
+      `INSERT INTO categories
+         (local_id, user_id, name, icon, colour, limit_minor, is_fixed, due_day,
+          version, created_at, updated_at, deleted_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (local_id) DO UPDATE SET
+         name=$3, icon=$4, colour=$5, limit_minor=$6, is_fixed=$7, due_day=$8,
+         version=$9, updated_at=$11, deleted_at=$12
+       WHERE categories.updated_at < $11`,
+      [row.local_id, userId, row.name, row.icon, row.colour, row.limit_minor,
+       row.is_fixed, row.due_day, row.version, row.created_at, row.updated_at, row.deleted_at],
+    );
+  }
+
+  async putBank(userId: string, row: Bank): Promise<void> {
+    await this.c.query(
+      `INSERT INTO banks
+         (local_id, user_id, name, colour, version, created_at, updated_at, deleted_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (local_id) DO UPDATE SET
+         name=$3, colour=$4, version=$5, updated_at=$7, deleted_at=$8
+       WHERE banks.updated_at < $7`,
+      [row.local_id, userId, row.name, row.colour, row.version,
+       row.created_at, row.updated_at, row.deleted_at],
+    );
+  }
+
+  async listCategoriesChangedSince(userId: string, since: Date): Promise<Category[]> {
+    const r = await this.c.query(
+      `SELECT local_id, name, icon, colour, limit_minor, is_fixed, due_day,
+              version, created_at, updated_at, deleted_at
+         FROM categories WHERE user_id=$1 AND updated_at > $2
+        ORDER BY updated_at, local_id`,
+      [userId, since],
+    );
+    return r.rows.map((x: Record<string, unknown>) => ({
+      local_id: x['local_id'] as string,
+      server_id: x['local_id'] as string,
+      name: x['name'] as string,
+      icon: x['icon'] as string,
+      colour: x['colour'] as string,
+      // BIGINT arrives as a string; see toStored for why this must be deliberate.
+      limit_minor: Number(x['limit_minor']),
+      is_fixed: x['is_fixed'] as boolean,
+      due_day: x['due_day'] === null ? null : Number(x['due_day']),
+      version: x['version'] as number,
+      created_at: (x['created_at'] as Date).toISOString(),
+      updated_at: (x['updated_at'] as Date).toISOString(),
+      deleted_at: x['deleted_at'] ? (x['deleted_at'] as Date).toISOString() : null,
+      sync_status: 'synced' as const,
+      device_id: 'server',
+    }));
+  }
+
+  async listBanksChangedSince(userId: string, since: Date): Promise<Bank[]> {
+    const r = await this.c.query(
+      `SELECT local_id, name, colour, version, created_at, updated_at, deleted_at
+         FROM banks WHERE user_id=$1 AND updated_at > $2
+        ORDER BY updated_at, local_id`,
+      [userId, since],
+    );
+    return r.rows.map((x: Record<string, unknown>) => ({
+      local_id: x['local_id'] as string,
+      server_id: x['local_id'] as string,
+      name: x['name'] as string,
+      colour: x['colour'] as string,
+      version: x['version'] as number,
+      created_at: (x['created_at'] as Date).toISOString(),
+      updated_at: (x['updated_at'] as Date).toISOString(),
+      deleted_at: x['deleted_at'] ? (x['deleted_at'] as Date).toISOString() : null,
+      sync_status: 'synced' as const,
+      device_id: 'server',
+    }));
+  }
+
+  async getSettings(userId: string): Promise<UserSettings | null> {
+    const r = await this.c.query(
+      `SELECT display_name, base_currency, day_to_day_minor, savings_target_minor,
+              avatar_emoji, avatar_colour, updated_at
+         FROM user_settings WHERE user_id=$1`,
+      [userId],
+    );
+    const x = r.rows[0] as Record<string, unknown> | undefined;
+    if (!x) return null;
+    return {
+      display_name: x['display_name'] as string,
+      base_currency: x['base_currency'] as string,
+      day_to_day_minor: Number(x['day_to_day_minor']),
+      savings_target_minor: Number(x['savings_target_minor']),
+      avatar_emoji: x['avatar_emoji'] as string,
+      avatar_colour: x['avatar_colour'] as string,
+      updated_at: (x['updated_at'] as Date).toISOString(),
+    };
+  }
+
+  async putSettings(userId: string, s: UserSettings): Promise<void> {
+    await this.c.query(
+      `INSERT INTO user_settings
+         (user_id, display_name, base_currency, day_to_day_minor,
+          savings_target_minor, avatar_emoji, avatar_colour, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (user_id) DO UPDATE SET
+         display_name=$2, base_currency=$3, day_to_day_minor=$4,
+         savings_target_minor=$5, avatar_emoji=$6, avatar_colour=$7, updated_at=$8
+       WHERE user_settings.updated_at < $8`,
+      [userId, s.display_name, s.base_currency, s.day_to_day_minor,
+       s.savings_target_minor, s.avatar_emoji, s.avatar_colour, s.updated_at],
+    );
+  }
+
 }

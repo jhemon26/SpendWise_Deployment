@@ -175,6 +175,8 @@ export class HttpSyncTransport implements SyncTransport {
     cursor: string | null,
   ): Promise<{
     transactions: unknown[];
+    categories: unknown[];
+    banks: unknown[];
     next_cursor: string | null;
     has_more: boolean;
     server_time: string;
@@ -188,6 +190,10 @@ export class HttpSyncTransport implements SyncTransport {
     const parsed = syncPullResponseSchema.parse(await res.json());
     return {
       transactions: parsed.transactions,
+      // Dropped here previously, so the server could return every category and
+      // the device would still show none.
+      categories: parsed.categories,
+      banks: parsed.banks,
       next_cursor: parsed.next_cursor,
       has_more: parsed.has_more,
       server_time: parsed.server_time,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Client } from 'pg';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { uuidv7, type SyncPushRequest, type Transaction } from '@spendwise/shared-types';
 import { Db } from '../db/db.js';
@@ -68,8 +68,11 @@ beforeAll(async () => {
 
   const c = await superClient(DB);
   c.on('notice', () => undefined);
-  await c.query(readFileSync(join(MIG, '001_init.sql'), 'utf8'));
-  await c.query(readFileSync(join(MIG, '002_rls.sql'), 'utf8'));
+  // Every migration, in order. Listing them by hand meant a new one was
+  // silently skipped and the suite failed against a schema no deployment has.
+  for (const f of readdirSync(MIG).filter((n) => /^\d+_.*\.sql$/.test(n)).sort()) {
+    await c.query(readFileSync(join(MIG, f), 'utf8'));
+  }
   const { rows } = await c.query<{ id: string }>(
     `INSERT INTO users (display_name, dek_wrapped)
      VALUES ('A', '\\x00'), ('B', '\\x00') RETURNING id`,

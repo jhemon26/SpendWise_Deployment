@@ -19,7 +19,8 @@ import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
 
 export interface AuthScreenProps {
   auth: AuthClient;
-  onSignedIn: (isNewAccount: boolean) => void;
+  /** The access token comes through so the app can tell WHICH account this is. */
+  onSignedIn: (isNewAccount: boolean, accessToken: string) => void;
   /** Absent until real OAuth client ids are configured. */
   oidcAvailable?: boolean;
 }
@@ -95,7 +96,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     setBusy(true); setError(null);
     try {
       const user = await auth.verifyOtp(challengeId, full);
-      onSignedIn(user.isNewAccount);
+      onSignedIn(user.isNewAccount, user.accessToken);
     } catch (err) {
       say(err);
       setDigits(Array(6).fill(''));

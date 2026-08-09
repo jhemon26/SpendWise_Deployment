@@ -95,6 +95,16 @@ export class SyncService {
       accepted.push({ local_id: row.local_id, version: row.version });
     }
 
+    /* Categories and banks are last-write-wins, so they need no version
+       negotiation — but they DO need the same clock correction, or a device
+       running fast would pin its rows as permanently newest. */
+    for (const c of req.categories) {
+      await this.repo.putCategory(userId, { ...c, updated_at: correct(c.updated_at) });
+    }
+    for (const b of req.banks) {
+      await this.repo.putBank(userId, { ...b, updated_at: correct(b.updated_at) });
+    }
+
     const body: Omit<SyncPushResponse, 'replayed'> = {
       accepted,
       conflicts,
@@ -187,10 +197,14 @@ export class SyncService {
     cursor: string | null = null,
   ): Promise<SyncPullResponse> {
     const page = await this.repo.listChangedSince(userId, since, this.pageSize, cursor);
+    /* Only on the FIRST page. Categories and banks are small and unpaginated,
+       so repeating them on every page of a long backfill would send the same
+       rows dozens of times. */
+    const first = cursor === null;
     return {
       transactions: page.rows,
-      categories: [],
-      banks: [],
+      categories: first ? await this.repo.listCategoriesChangedSince(userId, since) : [],
+      banks: first ? await this.repo.listBanksChangedSince(userId, since) : [],
       next_cursor: page.next_cursor,
       has_more: page.has_more,
       server_time: this.now().toISOString(),

@@ -1,4 +1,4 @@
-import { uuidv7, MAX_PUSH_BATCH, type SyncPushResponse, type Transaction } from '@spendwise/shared-types';
+import { uuidv7, MAX_PUSH_BATCH, type Bank, type Category, type SyncPushResponse, type Transaction } from '@spendwise/shared-types';
 import type { StorageAdapter, Table } from '../db/adapter.js';
 
 /**
@@ -16,6 +16,8 @@ export interface SyncTransport {
   push(body: unknown): Promise<SyncPushResponse>;
   pull(since: string | null, cursor: string | null): Promise<{
     transactions: unknown[];
+    categories: unknown[];
+    banks: unknown[];
     next_cursor: string | null;
     has_more: boolean;
     server_time: string;
@@ -170,9 +172,16 @@ export class SyncEngine {
         this.lastPulledAt,
         cursor,
       );
-      // The pull payload is transactions only; bulkPut is generic over the
-      // table, so name the table to pin the element type rather than casting
-      // through `unknown` and losing the check entirely.
+      /* Categories and banks arrive on the first page only. Applying them
+         BEFORE the transactions matters: a transaction whose category has not
+         landed yet renders as "Uncategorised" until the next cycle. */
+      const cats = page.categories as Category[];
+      if (cats.length) await this.db.bulkPut('categories', cats);
+      const bnks = page.banks as Bank[];
+      if (bnks.length) await this.db.bulkPut('banks', bnks);
+
+      // bulkPut is generic over the table, so name the table to pin the element
+      // type rather than casting through `unknown` and losing the check.
       const rows = page.transactions as Transaction[];
       if (rows.length) await this.db.bulkPut('transactions', rows);
       cursor = page.next_cursor;

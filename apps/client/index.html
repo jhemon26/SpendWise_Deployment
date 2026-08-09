@@ -12,18 +12,6 @@
 <link rel="icon" type="image/png" href="/icon-192.png">
 </head>
 <body>
-<script>
-  /* Applied before first paint. Without this the page renders with the default
-     dark tokens and then snaps to light once React mounts — a full-screen flash
-     on every load for anyone who chose light. Kept tiny and inline for the same
-     reason: an external file would arrive too late. */
-  (function () {
-    try {
-      var t = localStorage.getItem('sw.theme');
-      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
-    } catch (e) { /* private mode: fall back to the OS preference */ }
-  })();
-</script>
 <div id="root"></div>
 <script type="module" src="/src/main.tsx"></script>
 </body>

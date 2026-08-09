@@ -28,8 +28,6 @@ export interface AppState {
   /** Emoji avatar; empty means fall back to initials. */
   avatarEmoji: string;
   avatarColour: string;
-  /** 'system' follows the OS; the other two override it. */
-  theme: Theme;
 
   hydrate: (db: StorageAdapter) => Promise<void>;
   addTransaction: (db: StorageAdapter, draft: NewTransaction) => Promise<Transaction>;
@@ -37,7 +35,7 @@ export interface AppState {
   removeTransaction: (db: StorageAdapter, localId: string) => Promise<void>;
   upsertCategory: (db: StorageAdapter, c: Partial<Category> & { name: string }) => Promise<Category>;
   removeCategory: (db: StorageAdapter, localId: string) => Promise<void>;
-  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency' | 'avatarEmoji' | 'avatarColour' | 'theme'>>) => void;
+  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency' | 'avatarEmoji' | 'avatarColour'>>) => void;
   upsertBank: (db: StorageAdapter, b: Partial<Bank> & { name: string }) => Promise<Bank>;
   removeBank: (db: StorageAdapter, localId: string) => Promise<void>;
 }
@@ -78,11 +76,9 @@ function envelope(deviceId: string): Pick<
  */
 const SETTINGS_KEY = 'sw.settings';
 
-export type Theme = 'system' | 'light' | 'dark';
-
 export type Settings = Pick<
   AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'
-  | 'avatarEmoji' | 'avatarColour' | 'theme'
+  | 'avatarEmoji' | 'avatarColour'
 >;
 
 const DEFAULT_SETTINGS: Settings = {
@@ -93,7 +89,6 @@ const DEFAULT_SETTINGS: Settings = {
   // Empty falls back to initials, so a new account is never a blank circle.
   avatarEmoji: '',
   avatarColour: '#6366F1',
-  theme: 'system',
 };
 
 function loadSettings(): Settings {
@@ -111,8 +106,6 @@ function loadSettings(): Settings {
       avatarEmoji: typeof parsed.avatarEmoji === 'string' ? parsed.avatarEmoji : DEFAULT_SETTINGS.avatarEmoji,
       avatarColour: typeof parsed.avatarColour === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.avatarColour)
         ? parsed.avatarColour : DEFAULT_SETTINGS.avatarColour,
-      theme: parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system'
-        ? parsed.theme : DEFAULT_SETTINGS.theme,
     };
   } catch {
     // Private mode, quota, corrupt JSON — defaults are always usable.
@@ -126,20 +119,6 @@ export function clearSettings(): void {
   try { localStorage.removeItem(SETTINGS_KEY); } catch { /* nothing to clear */ }
 }
 
-export const THEME_KEY = 'sw.theme';
-
-/**
- * Writes the attribute the tokens key off. 'system' removes it entirely.
- *
- * Guarded: the store is imported by tests and by any non-DOM context, and a
- * preference write should never be the thing that throws there.
- */
-export function applyTheme(theme: Theme): void {
-  if (typeof document === 'undefined') return;
-  const root = document.documentElement;
-  if (theme === 'system') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', theme);
-}
 
 export const useApp = create<AppState>()((set, get) => ({
   ready: false,
@@ -244,15 +223,11 @@ export const useApp = create<AppState>()((set, get) => ({
 
   setSettings: (p) => {
     set(p);
-    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour, theme } = get();
-    if (p.theme) applyTheme(p.theme);
+    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour } = get();
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour, theme,
+        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour,
       }));
-      // Mirrored to its own key so the boot script in index.html can read it
-      // without parsing the whole settings blob before first paint.
-      localStorage.setItem(THEME_KEY, theme);
     } catch {
       // Persisting is best-effort; the in-memory update already happened.
     }

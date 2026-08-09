@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toMinor, fromMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
-import { useApp, clearSettings, applyTheme } from '../core/store.js';
+import { useApp, clearSettings } from '../core/store.js';
 import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
 import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
@@ -88,6 +88,8 @@ export function App(): JSX.Element {
          and once synced they would spread to every device they own. */
       const empty = (await db.all('transactions')).length === 0;
       if (empty && !API_BASE) await seedDemo(db);
+      // Devices set up before demo seeding was restricted still hold those rows.
+      if (API_BASE) await purgeDemoRows();
       await state.hydrate(db);
     })().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -97,6 +99,26 @@ export function App(): JSX.Element {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Remove sample rows from a real account.
+   *
+   * Seeding is now local-only, but anyone who used the app before that change
+   * still has the sample month sitting in IndexedDB. The rows are tagged
+   * device_id 'demo' and were written as already-synced, so the server never
+   * received them — marking them deleted is enough, and because they stay
+   * 'synced' the deletion is not pushed either. Nothing leaves the device.
+   */
+  async function purgeDemoRows(): Promise<void> {
+    const at = new Date().toISOString();
+    for (const table of ['transactions', 'categories', 'banks'] as const) {
+      const rows = await db.all(table);
+      for (const r of rows) {
+        if (r.device_id !== 'demo' || r.deleted_at) continue;
+        await db.put(table, { ...r, deleted_at: at, sync_status: 'synced' });
+      }
+    }
+  }
 
   async function applyOnboarding(r: OnboardingResult): Promise<void> {
     state.setSettings({
@@ -185,17 +207,6 @@ export function App(): JSX.Element {
     if (setup) { engine = setup.engine; engine.start(); engine.wake(); }
   }
 
-  /* On 'system', follow the OS live — someone with a sunset schedule expects
-     the app to turn with everything else, not on next launch. */
-  useEffect(() => {
-    applyTheme(state.theme);
-    if (state.theme !== 'system') return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (): void => applyTheme('system');
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [state.theme]);
-
   const now = useMemo(() => new Date(), []);
   // Scheduled fixed costs, not what has been paid — see MonthContext.
   const fixedCostsMinor = useMemo(
@@ -251,8 +262,6 @@ export function App(): JSX.Element {
     onEditBank: (b) => setBankEdit(b),
     onAddCategory: () => setCatEdit(null),
     onEditAvatar: () => setAvatarOpen(true),
-    theme: state.theme,
-    onTheme: (t) => state.setSettings({ theme: t }),
     avatarEmoji: state.avatarEmoji,
     avatarColour: state.avatarColour,
     // Running purely locally there is no session to end, so Profile hides it.

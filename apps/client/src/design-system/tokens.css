@@ -51,38 +51,6 @@
   --page-bg: radial-gradient(120% 80% at 50% -10%, #1a1f33 0%, #0e1220 38%, #06070a 78%);
 }
 
-/* Light theme. The prototype was dark-only; production needs both.
-   OS preference is the default signal, the in-app toggle overrides it. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-    --bg: #f5f6f8;
-    --surface: #ffffff;
-    --surface-2: #eff1f4;
-    --surface-3: #e6eaef;
-    --line: rgba(16, 19, 26, 0.08);
-    --line-strong: rgba(16, 19, 26, 0.16);
-    --hero-bg: linear-gradient(145deg, #ffffff 0%, #eef0f5 100%);
-    --text: #10131a;
-    --text-muted: #545c69;
-    --text-dim: #7b8593;
-    --shadow: 0 12px 32px -12px rgba(16, 19, 26, 0.18);
-    --page-bg: radial-gradient(120% 80% at 50% -10%, #ffffff 0%, #eef1f7 40%, #f5f6f8 78%);
-  }
-}
-
-:root[data-theme='light'] {
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --surface-2: #eff1f4;
-  --surface-3: #e6eaef;
-  --line: rgba(16, 19, 26, 0.08);
-  --line-strong: rgba(16, 19, 26, 0.16);
-  --hero-bg: linear-gradient(145deg, #ffffff 0%, #eef0f5 100%);
-  --text: #10131a;
-  --text-muted: #545c69;
-  --text-dim: #7b8593;
-  --shadow: 0 12px 32px -12px rgba(16, 19, 26, 0.18);
-}
 
 /* Base layer.
    This was in the prototype and was lost in the port to React, which is why a
@@ -102,7 +70,7 @@ html {
   background: var(--bg);
   /* Tells the browser to paint its own default surfaces (overscroll, form
      controls) to match, instead of flashing white. */
-  color-scheme: dark light;
+  color-scheme: dark;
 }
 
 body {

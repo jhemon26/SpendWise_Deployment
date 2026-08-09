@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { formatMoney, toMinor } from '@spendwise/shared-types';
+import {
+  formatMoney, toMinor, toMonthlyMinor,
+  PAY_FREQUENCIES, PAY_FREQUENCY_LABEL, type PayFrequency,
+} from '@spendwise/shared-types';
 import { Icon } from '../../design-system/components.js';
 
 /**
@@ -17,7 +20,10 @@ import { Icon } from '../../design-system/components.js';
 export interface OnboardingResult {
   displayName: string;
   baseCurrency: string;
+  /** Always monthly — the app budgets per calendar month whatever the cadence. */
   monthlyIncomeMinor: number;
+  /** Kept so the amount can be shown back in the user's own terms. */
+  payFrequency: PayFrequency;
   budgets: Array<{ name: string; icon: string; colour: string; limitMinor: number }>;
   /**
    * Recurring commitments, kept apart from day-to-day money.
@@ -69,15 +75,23 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState<string>('GBP');
   const [income, setIncome] = useState('');
+  const [payFrequency, setPayFrequency] = useState<PayFrequency>('monthly');
   const [chosen, setChosen] = useState<string[]>(SUGGESTED.slice(0, 5).map((c) => c.name));
   const [limits, setLimits] = useState<Record<string, string>>({});
   const [fixedChosen, setFixedChosen] = useState<string[]>([]);
   const [fixedAmounts, setFixedAmounts] = useState<Record<string, string>>({});
   const [fixedDays, setFixedDays] = useState<Record<string, string>>({});
 
-  const incomeMinor = useMemo(() => {
+  /* Converted to monthly at the point of entry. Everything downstream —
+     suggested limits, the savings target, every derived figure — stays monthly,
+     so cadence never has to be reasoned about again. */
+  const enteredMinor = useMemo(() => {
     try { return income ? toMinor(income, currency) : 0; } catch { return 0; }
   }, [income, currency]);
+  const incomeMinor = useMemo(
+    () => toMonthlyMinor(enteredMinor, payFrequency),
+    [enteredMinor, payFrequency],
+  );
 
   /* Suggested limits are derived from what they actually earn, so the numbers
      look like their life rather than a generic template. */
@@ -116,6 +130,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
       displayName: name.trim(),
       baseCurrency: currency,
       monthlyIncomeMinor: incomeMinor,
+      payFrequency,
       budgets: chosen.map((n) => {
         const c = SUGGESTED.find((s) => s.name === n)!;
         return { name: c.name, icon: c.icon, colour: c.colour, limitMinor: limitFor(n) };
@@ -179,7 +194,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {/* ── 2. earnings ────────────────────────────────────────────── */}
         {step === 2 && (
           <div style={card}>
-            <h1 style={h1}>Monthly income</h1>
+            <h1 style={h1}>What you earn</h1>
             <p style={lede}>Your take-home pay, after tax.</p>
 
             <div style={segRow} role="group" aria-label="Currency">
@@ -202,6 +217,25 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
                 style={amountInput} size={Math.max(1, income.length || 1)}
               />
             </div>
+
+            <p style={{ ...stepLabel, marginTop: 'var(--s3)' }}>How often are you paid?</p>
+            <div role="group" aria-label="Pay frequency" style={freqRow}>
+              {PAY_FREQUENCIES.map((f) => (
+                <button
+                  key={f} type="button" onClick={() => setPayFrequency(f)}
+                  aria-pressed={payFrequency === f}
+                  style={freqChip(payFrequency === f)}
+                >{PAY_FREQUENCY_LABEL[f]}</button>
+              ))}
+            </div>
+
+            {/* Show the conversion rather than doing it silently — a weekly
+                earner should see the number the budget will actually use. */}
+            {enteredMinor > 0 && payFrequency !== 'monthly' && (
+              <p style={{ ...hint, textAlign: 'left', marginTop: 'var(--s2)' }}>
+                That works out at <b style={{ color: 'var(--text)' }}>{formatMoney(incomeMinor, currency)}</b> a month.
+              </p>
+            )}
 
             <Footer onBack={back} onNext={next} nextLabel="Continue" skip={next} />
           </div>
@@ -410,6 +444,16 @@ const glow: React.CSSProperties = {
 const shell: React.CSSProperties = {
   position: 'relative', zIndex: 1, width: 'min(100%, 400px)', display: 'grid', gap: 'var(--s4)',
 };
+const freqRow: React.CSSProperties = {
+  display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 'var(--s2)',
+};
+const freqChip = (on: boolean): React.CSSProperties => ({
+  padding: '9px 14px', borderRadius: 999, cursor: 'pointer',
+  fontSize: 13, fontWeight: 700,
+  background: on ? 'var(--brand-soft)' : 'var(--surface-3)',
+  border: `1px solid ${on ? 'var(--line-brand)' : 'transparent'}`,
+  color: on ? 'var(--text)' : 'var(--text-dim)',
+});
 const stepLabel: React.CSSProperties = {
   fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.07em',
   textTransform: 'uppercase', color: 'var(--text-dim)',

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { uuidv7, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
+import { uuidv7, isPayFrequency, type Bank, type Category, type PayFrequency, type Transaction } from '@spendwise/shared-types';
 import type { StorageAdapter } from './db/adapter.js';
 
 /**
@@ -25,6 +25,9 @@ export interface AppState {
   savingsTargetMinor: number;
   displayName: string;
   baseCurrency: string;
+  /** Take-home pay, normalised to monthly however it is actually paid. */
+  monthlyIncomeMinor: number;
+  payFrequency: PayFrequency;
   /** Emoji avatar; empty means fall back to initials. */
   avatarEmoji: string;
   avatarColour: string;
@@ -35,7 +38,7 @@ export interface AppState {
   removeTransaction: (db: StorageAdapter, localId: string) => Promise<void>;
   upsertCategory: (db: StorageAdapter, c: Partial<Category> & { name: string }) => Promise<Category>;
   removeCategory: (db: StorageAdapter, localId: string) => Promise<void>;
-  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency' | 'avatarEmoji' | 'avatarColour'>>) => void;
+  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency' | 'avatarEmoji' | 'avatarColour' | 'monthlyIncomeMinor' | 'payFrequency'>>) => void;
   upsertBank: (db: StorageAdapter, b: Partial<Bank> & { name: string }) => Promise<Bank>;
   removeBank: (db: StorageAdapter, localId: string) => Promise<void>;
 }
@@ -78,7 +81,7 @@ const SETTINGS_KEY = 'sw.settings';
 
 export type Settings = Pick<
   AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'
-  | 'avatarEmoji' | 'avatarColour'
+  | 'avatarEmoji' | 'avatarColour' | 'monthlyIncomeMinor' | 'payFrequency'
 >;
 
 const DEFAULT_SETTINGS: Settings = {
@@ -89,6 +92,8 @@ const DEFAULT_SETTINGS: Settings = {
   // Empty falls back to initials, so a new account is never a blank circle.
   avatarEmoji: '',
   avatarColour: '#6366F1',
+  monthlyIncomeMinor: 0,
+  payFrequency: 'monthly',
 };
 
 function loadSettings(): Settings {
@@ -106,6 +111,10 @@ function loadSettings(): Settings {
       avatarEmoji: typeof parsed.avatarEmoji === 'string' ? parsed.avatarEmoji : DEFAULT_SETTINGS.avatarEmoji,
       avatarColour: typeof parsed.avatarColour === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.avatarColour)
         ? parsed.avatarColour : DEFAULT_SETTINGS.avatarColour,
+      monthlyIncomeMinor: Number.isFinite(parsed.monthlyIncomeMinor)
+        ? parsed.monthlyIncomeMinor as number : DEFAULT_SETTINGS.monthlyIncomeMinor,
+      payFrequency: isPayFrequency(parsed.payFrequency)
+        ? parsed.payFrequency : DEFAULT_SETTINGS.payFrequency,
     };
   } catch {
     // Private mode, quota, corrupt JSON — defaults are always usable.
@@ -121,6 +130,8 @@ export const settingsOf = (s: AppState): Settings => ({
   savingsTargetMinor: s.savingsTargetMinor,
   avatarEmoji: s.avatarEmoji,
   avatarColour: s.avatarColour,
+  monthlyIncomeMinor: s.monthlyIncomeMinor,
+  payFrequency: s.payFrequency,
 });
 
 export function clearSettings(): void {
@@ -233,10 +244,10 @@ export const useApp = create<AppState>()((set, get) => ({
 
   setSettings: (p) => {
     set(p);
-    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour } = get();
+    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour, monthlyIncomeMinor, payFrequency } = get();
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour,
+        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour, monthlyIncomeMinor, payFrequency,
       }));
     } catch {
       // Persisting is best-effort; the in-memory update already happened.

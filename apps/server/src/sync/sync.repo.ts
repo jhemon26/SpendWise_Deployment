@@ -33,6 +33,8 @@ export interface UserSettings {
   savings_target_minor: number;
   avatar_emoji: string;
   avatar_colour: string;
+  monthly_income_minor: number;
+  pay_frequency: string;
   updated_at: string;
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatMoney, formatSignedMoney, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
+import { fromMonthlyMinor, PAY_FREQUENCY_LABEL, formatMoney, formatSignedMoney, type PayFrequency, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import { Avatar, Bar, Card, CardHead, Chip, Empty, Gauge, Icon } from '../design-system/components.js';
 import {
   billsFor, categoryBreakdown, dayLabel, derive, fixedCostsTotalMinor, groupByDay,
@@ -28,12 +28,14 @@ export interface ScreenData {
   onFilter?: ((f: TxFilter) => void) | undefined;
   onAddCategory?: (() => void) | undefined;
   /** Open the single-value editor for one of the month settings. */
-  onEditSetting?: ((which: 'budget' | 'savings' | 'name') => void) | undefined;
+  onEditSetting?: ((which: 'budget' | 'savings' | 'name' | 'income') => void) | undefined;
   /** null opens the editor empty, for a new one. */
   onEditCategory?: ((c: Category | null) => void) | undefined;
   onEditBank?: ((b: Bank | null) => void) | undefined;
   onEditAvatar?: (() => void) | undefined;
   onDeleteAccount?: (() => void) | undefined;
+  monthlyIncomeMinor?: number | undefined;
+  payFrequency?: PayFrequency | undefined;
   avatarEmoji?: string | undefined;
   avatarColour?: string | undefined;
 }
@@ -626,6 +628,7 @@ export function Profile({
   categories, banks, transactions, currency, displayName, dayToDayMinor,
   savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
   onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1', onDeleteAccount,
+  monthlyIncomeMinor = 0, payFrequency = 'monthly',
 }: ScreenData): JSX.Element {
   const flex = categories.filter((c) => !c.deleted_at && !c.is_fixed);
   const fixed = categories.filter((c) => !c.deleted_at && c.is_fixed);
@@ -677,6 +680,16 @@ export function Profile({
       <Card>
         <CardHead title="Your money" />
         <SettingRow
+          icon={<SettingIcon bg="var(--brand-purple)" path="M12 3v18M8 7h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6" />}
+          name="Take-home pay"
+          sub={monthlyIncomeMinor > 0
+            ? `${money0(fromMonthlyMinor(monthlyIncomeMinor, payFrequency), currency)} ${PAY_FREQUENCY_LABEL[payFrequency].toLowerCase()}`
+            : 'Not set'}
+          value={monthlyIncomeMinor > 0 ? `${money0(monthlyIncomeMinor, currency)}/mo` : '—'}
+          onClick={onEditSetting && (() => onEditSetting('income'))}
+        />
+        <SettingRow
+          divider
           icon={<SettingIcon bg="var(--brand)" path="M3 10.5h18M6 6h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />}
           name="Day-to-day budget" sub="Your monthly spending money"
           value={money0(dayToDayMinor, currency)}

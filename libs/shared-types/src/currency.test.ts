@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CurrencyError, convertMinor, formatMoney, formatSignedMoney, fromMinor, minorUnits, toDecimalString, toMinor } from './currency.js';
+import { CurrencyError, PAY_FREQUENCIES, convertMinor, formatMoney, formatSignedMoney, fromMinor, fromMonthlyMinor, isPayFrequency, minorUnits, toDecimalString, toMinor, toMonthlyMinor } from './currency.js';
 
 describe('minorUnits', () => {
   it('defaults to 2', () => {
@@ -193,5 +193,55 @@ describe('formatSignedMoney', () => {
   // own sign, because formatMoney already does.
   it('formatMoney signs negatives on its own', () => {
     expect(formatMoney(-16729, 'GBP')).toBe('-£167.29');
+  });
+});
+
+describe('pay frequency', () => {
+  it('leaves monthly alone', () => {
+    expect(toMonthlyMinor(250000, 'monthly')).toBe(250000);
+  });
+
+  it('does NOT treat a month as four weeks', () => {
+    // £500/week is £2,174/month, not £2,000. Using 4 understates income by
+    // ~8%, which understates budgets and the savings target with it.
+    expect(toMonthlyMinor(50000, 'weekly')).toBe(217411);
+    expect(toMonthlyMinor(50000, 'weekly')).toBeGreaterThan(200000);
+  });
+
+  it('scales fortnightly and four-weekly from the same constant', () => {
+    // Doubling the cadence must halve the multiplier exactly, or two people on
+    // identical pay would see different budgets.
+    expect(toMonthlyMinor(100000, 'fortnightly')).toBe(toMonthlyMinor(50000, 'weekly'));
+    expect(toMonthlyMinor(200000, 'four_weekly')).toBe(toMonthlyMinor(50000, 'weekly'));
+  });
+
+  it('divides a yearly figure by twelve', () => {
+    expect(toMonthlyMinor(3000000, 'annual')).toBe(250000);
+  });
+
+  it('round-trips within a penny or two', () => {
+    for (const f of PAY_FREQUENCIES) {
+      const monthly = toMonthlyMinor(123456, f);
+      const back = fromMonthlyMinor(monthly, f);
+      expect(Math.abs(back - 123456), f).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('handles zero without dividing by anything', () => {
+    for (const f of PAY_FREQUENCIES) expect(toMonthlyMinor(0, f), f).toBe(0);
+  });
+
+  it('always returns whole minor units', () => {
+    // A fractional penny reaching the budget maths would drift every total.
+    for (const f of PAY_FREQUENCIES) {
+      expect(Number.isInteger(toMonthlyMinor(33333, f)), f).toBe(true);
+    }
+  });
+
+  it('recognises only real frequencies', () => {
+    expect(isPayFrequency('weekly')).toBe(true);
+    expect(isPayFrequency('daily')).toBe(false);
+    expect(isPayFrequency('')).toBe(false);
+    expect(isPayFrequency(null)).toBe(false);
   });
 });

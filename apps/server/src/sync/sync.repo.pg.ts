@@ -272,7 +272,7 @@ export class PgSyncRepo implements SyncRepo {
   async getSettings(userId: string): Promise<UserSettings | null> {
     const r = await this.c.query(
       `SELECT display_name, base_currency, day_to_day_minor, savings_target_minor,
-              avatar_emoji, avatar_colour, updated_at
+              avatar_emoji, avatar_colour, monthly_income_minor, pay_frequency, updated_at
          FROM user_settings WHERE user_id=$1`,
       [userId],
     );
@@ -285,6 +285,8 @@ export class PgSyncRepo implements SyncRepo {
       savings_target_minor: Number(x['savings_target_minor']),
       avatar_emoji: x['avatar_emoji'] as string,
       avatar_colour: x['avatar_colour'] as string,
+      monthly_income_minor: Number(x['monthly_income_minor']),
+      pay_frequency: x['pay_frequency'] as string,
       updated_at: (x['updated_at'] as Date).toISOString(),
     };
   }
@@ -293,14 +295,17 @@ export class PgSyncRepo implements SyncRepo {
     await this.c.query(
       `INSERT INTO user_settings
          (user_id, display_name, base_currency, day_to_day_minor,
-          savings_target_minor, avatar_emoji, avatar_colour, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          savings_target_minor, avatar_emoji, avatar_colour,
+          monthly_income_minor, pay_frequency, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (user_id) DO UPDATE SET
          display_name=$2, base_currency=$3, day_to_day_minor=$4,
-         savings_target_minor=$5, avatar_emoji=$6, avatar_colour=$7, updated_at=$8
-       WHERE user_settings.updated_at < $8`,
+         savings_target_minor=$5, avatar_emoji=$6, avatar_colour=$7,
+         monthly_income_minor=$8, pay_frequency=$9, updated_at=$10
+       WHERE user_settings.updated_at < $10`,
       [userId, s.display_name, s.base_currency, s.day_to_day_minor,
-       s.savings_target_minor, s.avatar_emoji, s.avatar_colour, s.updated_at],
+       s.savings_target_minor, s.avatar_emoji, s.avatar_colour,
+       s.monthly_income_minor, s.pay_frequency, s.updated_at],
     );
   }
 

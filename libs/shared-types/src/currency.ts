@@ -176,3 +176,59 @@ export function convertMinor(
   // round half away from zero, matching toMinor
   return converted < 0 ? -Math.round(-converted) : Math.round(converted);
 }
+
+/* ── pay frequency ─────────────────────────────────────────────────────── */
+
+export type PayFrequency = 'weekly' | 'fortnightly' | 'four_weekly' | 'monthly' | 'annual';
+
+export const PAY_FREQUENCIES: PayFrequency[] =
+  ['weekly', 'fortnightly', 'four_weekly', 'monthly', 'annual'];
+
+export const PAY_FREQUENCY_LABEL: Record<PayFrequency, string> = {
+  weekly: 'Weekly',
+  fortnightly: 'Every 2 weeks',
+  four_weekly: 'Every 4 weeks',
+  monthly: 'Monthly',
+  annual: 'Yearly',
+};
+
+/**
+ * Weeks in a year, averaged over the leap cycle.
+ *
+ * NOT 52, and emphatically not "4 weeks to a month". A year is 52.1775 weeks,
+ * so weekly pay is 4.348 monthly, not 4. Using 4 would understate someone's
+ * income by about 8% — which then understates their suggested budgets and
+ * their savings target, so the app would quietly tell them they can afford
+ * less than they can. The error compounds through every derived figure.
+ */
+const WEEKS_PER_YEAR = 365.25 / 7;
+
+/** Convert pay at any cadence to the monthly figure the app budgets in. */
+export function toMonthlyMinor(amountMinor: number, freq: PayFrequency): number {
+  switch (freq) {
+    case 'monthly': return Math.round(amountMinor);
+    case 'annual': return Math.round(amountMinor / 12);
+    case 'weekly': return Math.round((amountMinor * WEEKS_PER_YEAR) / 12);
+    case 'fortnightly': return Math.round((amountMinor * (WEEKS_PER_YEAR / 2)) / 12);
+    case 'four_weekly': return Math.round((amountMinor * (WEEKS_PER_YEAR / 4)) / 12);
+  }
+}
+
+/**
+ * The inverse, so the amount can be shown back in the user's own terms.
+ *
+ * Round-tripping is lossy by a penny or two — that is inherent to storing one
+ * monthly number, not a bug to chase.
+ */
+export function fromMonthlyMinor(monthlyMinor: number, freq: PayFrequency): number {
+  switch (freq) {
+    case 'monthly': return Math.round(monthlyMinor);
+    case 'annual': return Math.round(monthlyMinor * 12);
+    case 'weekly': return Math.round((monthlyMinor * 12) / WEEKS_PER_YEAR);
+    case 'fortnightly': return Math.round((monthlyMinor * 12) / (WEEKS_PER_YEAR / 2));
+    case 'four_weekly': return Math.round((monthlyMinor * 12) / (WEEKS_PER_YEAR / 4));
+  }
+}
+
+export const isPayFrequency = (v: unknown): v is PayFrequency =>
+  typeof v === 'string' && (PAY_FREQUENCIES as string[]).includes(v);

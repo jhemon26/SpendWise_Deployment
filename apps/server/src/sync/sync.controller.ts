@@ -25,6 +25,8 @@ const settingsSchema = z.object({
   // Checked here as well as by the column constraint: it is written straight
   // into an inline style on the client.
   avatar_colour: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#6366F1'),
+  monthly_income_minor: z.number().int().nonnegative().max(1_000_000_000).default(0),
+  pay_frequency: z.enum(['weekly', 'fortnightly', 'four_weekly', 'monthly', 'annual']).default('monthly'),
 });
 
 /**

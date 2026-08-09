@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { toMinor, fromMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
+import { toMinor, fromMinor, toMonthlyMinor, fromMonthlyMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import { useApp, clearSettings, settingsOf } from '../core/store.js';
 import type { StorageAdapter } from '../core/db/adapter.js';
 import { openLocalStore } from '../core/db/index.js';
@@ -126,6 +126,8 @@ export function App(): JSX.Element {
     state.setSettings({
       displayName: r.displayName,
       baseCurrency: r.baseCurrency,
+      monthlyIncomeMinor: r.monthlyIncomeMinor,
+      payFrequency: r.payFrequency,
       dayToDayMinor: r.budgets.reduce((s, b) => s + b.limitMinor, 0) || state.dayToDayMinor,
       savingsTargetMinor: Math.max(
         0,
@@ -265,6 +267,21 @@ export function App(): JSX.Element {
         });
         return;
       }
+      if (which === 'income') {
+        // Edited in the user's own cadence, stored monthly — the same rule as
+        // onboarding, so the two cannot disagree.
+        const freq = state.payFrequency;
+        setValueEdit({
+          kind: 'money',
+          heading: 'Take-home pay',
+          value: String(fromMinor(fromMonthlyMinor(state.monthlyIncomeMinor, freq), cur)),
+          currency: cur,
+          onSave: (raw) => state.setSettings({
+            monthlyIncomeMinor: toMonthlyMinor(toMinor(raw, cur), freq),
+          }),
+        });
+        return;
+      }
       const isBudget = which === 'budget';
       setValueEdit({
         kind: 'money',
@@ -282,6 +299,8 @@ export function App(): JSX.Element {
     onAddCategory: () => setCatEdit(null),
     onEditAvatar: () => setAvatarOpen(true),
     ...(API_BASE && signedIn ? { onDeleteAccount: () => setDeleteOpen(true) } : {}),
+    monthlyIncomeMinor: state.monthlyIncomeMinor,
+    payFrequency: state.payFrequency,
     avatarEmoji: state.avatarEmoji,
     avatarColour: state.avatarColour,
     // Running purely locally there is no session to end, so Profile hides it.

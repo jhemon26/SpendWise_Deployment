@@ -466,3 +466,75 @@ export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
     </Scrim>
   );
 }
+
+/* ── delete account ────────────────────────────────────────────────────── */
+
+/**
+ * Irreversible, so it asks for the word to be typed.
+ *
+ * A plain "are you sure?" is dismissed reflexively; typing DELETE forces the
+ * user to read what they are about to do. For an action that destroys every
+ * transaction they have ever recorded, that friction is the point.
+ */
+export function DeleteAccountEditor({ onConfirm, onClose }: {
+  onConfirm: () => Promise<void>;
+  onClose: () => void;
+}): JSX.Element {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const ok = typed.trim().toUpperCase() === 'DELETE';
+
+  return (
+    <Scrim onClose={busy ? () => undefined : onClose} centred>
+      <p style={title}>Delete your account</p>
+      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s3)' }}>
+        This removes every transaction, category, budget and setting from your
+        account and from this device. It cannot be undone.
+      </p>
+      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s4)' }}>
+        Signing in again with the same account will start you from scratch.
+      </p>
+
+      <label htmlFor="sw-del" style={{ ...label, marginTop: 0 }}>Type DELETE to confirm</label>
+      <input
+        id="sw-del"
+        style={field}
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        autoComplete="off"
+        autoCapitalize="characters"
+        aria-label="Type DELETE to confirm"
+      />
+
+      {failed && (
+        <p role="alert" style={{ fontSize: 'var(--fs-2xs)', color: 'var(--danger)', fontWeight: 600, marginTop: 'var(--s2)' }}>
+          {failed}
+        </p>
+      )}
+
+      <div style={btnRow}>
+        <button type="button" style={ghost} disabled={busy} onClick={onClose}>Cancel</button>
+        <button
+          type="button"
+          disabled={!ok || busy}
+          onClick={() => {
+            setBusy(true); setFailed(null);
+            onConfirm().catch(() => {
+              // Never pretend it worked — the account would still exist.
+              setFailed('Could not delete the account. Check your connection and try again.');
+              setBusy(false);
+            });
+          }}
+          style={{
+            width: '100%', padding: 15, borderRadius: 'var(--r-md)', border: 0,
+            fontSize: 'var(--fs-md)', fontWeight: 800,
+            background: 'var(--danger)', color: '#fff',
+            opacity: ok && !busy ? 1 : .35,
+            cursor: ok && !busy ? 'pointer' : 'not-allowed',
+          }}
+        >{busy ? 'Deleting…' : 'Delete forever'}</button>
+      </div>
+    </Scrim>
+  );
+}

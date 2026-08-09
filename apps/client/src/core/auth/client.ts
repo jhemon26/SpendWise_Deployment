@@ -90,6 +90,13 @@ export class AuthClient {
     return send();
   }
 
+  /** Irreversible on the server; the caller clears the device. */
+  async deleteAccount(): Promise<void> {
+    const res = await this.authedFetch(`${this.baseUrl}/v1/auth/account`, { method: 'DELETE' });
+    if (!res.ok) throw await this.fail(res, 'delete_failed');
+    this.tokens.clear();
+  }
+
   private async fail(res: Response, fallback: string): Promise<AuthError> {
     let code = fallback;
     try {

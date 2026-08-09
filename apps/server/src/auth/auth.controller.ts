@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Req, Res, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { setRefreshCookie, clearRefreshCookie, readRefreshToken } from './refresh-cookie.js';
@@ -9,6 +9,8 @@ import { IdentityService, type Provider } from './identity.service.js';
 import { OidcVerifier, OidcError } from './oidc.verifier.js';
 import { OtpService, OtpError } from './otp.service.js';
 import { TokenService, TokenError } from './token.service.js';
+import { Db } from '../db/db.js';
+import { AuditService } from '../audit/audit.service.js';
 
 const oidcCallbackSchema = z.object({
   provider: z.enum(['google', 'apple']),
@@ -38,6 +40,8 @@ export class AuthController {
     private readonly oidc: OidcVerifier,
     private readonly otp: OtpService,
     private readonly tokens: TokenService,
+    private readonly db: Db,
+    private readonly audit: AuditService,
   ) {}
 
   private get cookieOpts(): { secure: boolean; maxAgeDays: number } {
@@ -192,4 +196,42 @@ export class AuthController {
     const rows = await this.identities.listForUser(req.user!.id);
     return { identities: rows, needs_backup: rows.length < 2 };
   }
+  /**
+   * Erase the account.
+   *
+   * The id comes from the verified access token, never the body — a user_id in
+   * the payload would let anyone delete anyone. Cascades remove every row the
+   * account owns; audit entries are kept but stripped of user_id and actor_ip,
+   * so the security trail survives without the personal data in it.
+   *
+   * Irreversible, and there is no soft-delete: "delete my data" that leaves the
+   * data in place is not deletion. Signing in with the same Google account
+   * afterwards resolves to nobody and creates a fresh user.
+   */
+  @Delete('account')
+  async deleteAccount(
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ ok: true }> {
+    const userId = req.user!.id;
+
+    // Recorded BEFORE the delete: afterwards there is no account to attribute
+    // it to, and this is the one event most worth keeping.
+    await this.audit.record({
+      user_id: userId,
+      action: 'account.delete',
+      entity: 'user',
+      entity_id: userId,
+      meta: {},
+    });
+
+    await this.db.withUser(userId, async (c) => {
+      await c.query('SELECT app_delete_account($1)', [userId]);
+    });
+
+    // The refresh cookie would otherwise outlive the account it points at.
+    clearRefreshCookie(res, this.cookieOpts);
+    return { ok: true };
+  }
+
 }

@@ -7,7 +7,7 @@ import { AddSheet, type SaveDraft } from '../features/transactions/AddSheet.js';
 import { AuthScreen } from '../features/auth/AuthScreen.js';
 import { Onboarding, type OnboardingResult } from '../features/onboarding/Onboarding.js';
 import { Tour } from '../features/onboarding/Tour.js';
-import { ValueEditor, CategoryEditor, BankEditor, AvatarEditor, type ValueEdit } from '../features/settings/Editors.js';
+import { ValueEditor, CategoryEditor, BankEditor, AvatarEditor, DeleteAccountEditor, type ValueEdit } from '../features/settings/Editors.js';
 import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
 import { subjectOf } from '../core/auth/subject.js';
@@ -62,6 +62,7 @@ export function App(): JSX.Element {
   const [catEdit, setCatEdit] = useState<Category | null | undefined>(undefined);
   const [bankEdit, setBankEdit] = useState<Bank | null | undefined>(undefined);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const state = useApp();
 
   useEffect(() => {
@@ -280,6 +281,7 @@ export function App(): JSX.Element {
     onEditBank: (b) => setBankEdit(b),
     onAddCategory: () => setCatEdit(null),
     onEditAvatar: () => setAvatarOpen(true),
+    ...(API_BASE && signedIn ? { onDeleteAccount: () => setDeleteOpen(true) } : {}),
     avatarEmoji: state.avatarEmoji,
     avatarColour: state.avatarColour,
     // Running purely locally there is no session to end, so Profile hides it.
@@ -459,6 +461,25 @@ export function App(): JSX.Element {
           name={state.displayName}
           onClose={() => setAvatarOpen(false)}
           onSave={({ emoji, colour }) => state.setSettings({ avatarEmoji: emoji, avatarColour: colour })}
+        />
+      )}
+
+      {deleteOpen && (
+        <DeleteAccountEditor
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={async () => {
+            // Server first. If it fails the account still exists, and wiping
+            // the device would leave the user locked out of data that is
+            // still there.
+            await auth.deleteAccount();
+            engine?.stop();
+            engine = null;
+            await db.clear();
+            clearSettings();
+            localStorage.removeItem('sw.onboarded');
+            localStorage.removeItem('sw.account');
+            location.reload();
+          }}
         />
       )}
 

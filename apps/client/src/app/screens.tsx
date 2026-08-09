@@ -33,6 +33,7 @@ export interface ScreenData {
   onEditCategory?: ((c: Category | null) => void) | undefined;
   onEditBank?: ((b: Bank | null) => void) | undefined;
   onEditAvatar?: (() => void) | undefined;
+  onDeleteAccount?: (() => void) | undefined;
   avatarEmoji?: string | undefined;
   avatarColour?: string | undefined;
 }
@@ -624,7 +625,7 @@ export function Insights({ categories, transactions, d, currency, now }: ScreenD
 export function Profile({
   categories, banks, transactions, currency, displayName, dayToDayMinor,
   savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
-  onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1',
+  onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1', onDeleteAccount,
 }: ScreenData): JSX.Element {
   const flex = categories.filter((c) => !c.deleted_at && !c.is_fixed);
   const fixed = categories.filter((c) => !c.deleted_at && c.is_fixed);
@@ -751,6 +752,26 @@ export function Profile({
             }}
           >
             Sign out
+          </button>
+        </Card>
+      )}
+
+      {onDeleteAccount && (
+        <Card style={{ borderColor: 'var(--danger-soft)' }}>
+          <CardHead title="Danger zone" />
+          <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s3)' }}>
+            Permanently delete your account and everything in it.
+          </p>
+          <button
+            type="button"
+            onClick={onDeleteAccount}
+            style={{
+              width: '100%', minHeight: 48, borderRadius: 'var(--r-md)', cursor: 'pointer',
+              background: 'transparent', border: '1px solid var(--danger)',
+              color: 'var(--danger)', fontSize: 'var(--fs-sm)', fontWeight: 700,
+            }}
+          >
+            Delete account
           </button>
         </Card>
       )}

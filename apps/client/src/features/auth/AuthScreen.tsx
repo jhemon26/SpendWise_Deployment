@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
-import { GOOGLE_CLIENT_ID, newNonce, renderGoogleButton } from './google.js';
+import { GOOGLE_CLIENT_ID, newNonce, prepareGoogle } from './google.js';
 
 /**
  * Sign-in (ARCHITECTURE §9.1).
@@ -61,6 +61,8 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const googleSlot = useRef<HTMLDivElement | null>(null);
+  const googleTrigger = useRef<(() => void) | null>(null);
+  const [googleReady, setGoogleReady] = useState(true);
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
 
@@ -80,24 +82,28 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  /* Google renders its own button, so this waits for the slot to exist. */
+  /* The real Google button is rendered off-screen; ours forwards the click. */
   useEffect(() => {
-    if (stage !== 'choose' || !GOOGLE_CLIENT_ID) return;
-    const el = googleSlot.current;
-    if (!el) return;
-    void renderGoogleButton(
-      el,
+    if (!GOOGLE_CLIENT_ID) return;
+    const host = googleSlot.current;
+    if (!host) return;
+    let live = true;
+    void prepareGoogle(
+      host,
       nonce.current,
-      (idToken) => {
+      (idToken: string) => {
         setBusy(true); setError(null);
         auth.oidcCallback('google', idToken, nonce.current)
           .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
           .catch((e: unknown) => { say(e); setBusy(false); });
       },
-      () => setError('Google sign-in is unavailable right now. Use your mobile number.'),
-    );
+      () => setError('Google sign-in is unavailable. Use your mobile number.'),
+    )
+      .then((trigger) => { if (live) googleTrigger.current = trigger; })
+      .catch(() => { if (live) setGoogleReady(false); });
+    return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage]);
+  }, []);
 
   const say = (err: unknown): void => {
     const c = (err as { code?: string }).code ?? '';
@@ -165,11 +171,11 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
               : stage === 'phone' ? 'Your mobile number'
                 : 'Sign in to SpendWise'}
           </h1>
-          <p style={subhead}>
+          <p style={{ ...subhead, ...(stage === 'choose' ? { display: 'none' } : {}) }}>
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
               : stage === 'phone' ? 'We’ll text you a code.'
-                : 'Choose how you’d like to continue.'}
+                : ''}
           </p>
         </header>
 
@@ -186,9 +192,12 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              {GOOGLE_CLIENT_ID
-                ? <div ref={googleSlot} style={{ display: 'grid', placeItems: 'center', minHeight: 44 }} />
-                : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
+              <Provider
+                kind="google"
+                ready={Boolean(GOOGLE_CLIENT_ID) && googleReady}
+                onUnavailable={setSoon}
+                onStart={() => googleTrigger.current?.()}
+              />
               <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
               {soon && (
                 <p role="status" style={soonNote}>
@@ -280,6 +289,8 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           )}
         </div>
 
+        <div ref={googleSlot} />
+
         <p style={microcopy}>
           <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden stroke="currentColor" strokeWidth={2}
                fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -310,17 +321,18 @@ function Spinner(): JSX.Element {
  * four-colour G on a light surface, so this one deliberately breaks the dark
  * palette — a recoloured G is a brand violation and reads as a phishing page.
  */
-function Provider({ kind, ready, onUnavailable }: {
+function Provider({ kind, ready, onUnavailable, onStart }: {
   kind: 'google' | 'apple';
   ready: boolean;
   onUnavailable: (name: string) => void;
+  onStart?: (() => void) | undefined;
 }): JSX.Element {
   const name = kind === 'google' ? 'Google' : 'Apple';
   const style = kind === 'google' ? googleBtn : appleBtn;
   return (
     <button
       type="button"
-      onClick={() => { if (!ready) onUnavailable(name); }}
+      onClick={() => { if (ready && onStart) onStart(); else onUnavailable(name); }}
       style={style}
       aria-label={`Continue with ${name}`}
     >
@@ -471,12 +483,15 @@ const divider: React.CSSProperties = {
 const rule: React.CSSProperties = { height: 1, background: 'var(--line)' };
 
 const googleBtn: React.CSSProperties = {
+  // White with the four-colour mark: Google's guidelines allow a custom button
+  // but not a recoloured G, and a monochrome one reads as a phishing page.
   ...base, background: '#FFFFFF', color: '#1F1F1F', fontWeight: 700,
-  border: '1px solid rgba(0,0,0,.10)',
+  border: '1px solid rgba(0,0,0,.08)',
 };
 
 const appleBtn: React.CSSProperties = {
-  ...base, background: 'var(--text)', color: 'var(--bg)', fontWeight: 700,
+  ...base, background: '#FFFFFF', color: '#1F1F1F', fontWeight: 700,
+  border: '1px solid rgba(0,0,0,.08)',
 };
 
 const soonNote: React.CSSProperties = {

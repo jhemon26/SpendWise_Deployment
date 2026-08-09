@@ -77,59 +77,60 @@ export function newNonce(): string {
 }
 
 /**
- * Render Google's own button into `parent`.
+ * Prepare sign-in and return a trigger for our own button.
  *
- * Google's branding terms require their rendered button rather than a
- * look-alike, and it is also what keeps the flow working when they change it.
+ * Google's rendered button will not sit on a dark card — its wrapper paints its
+ * own white surround at the container's width, which reads as a slab rather
+ * than a button. Their guidelines do permit a custom button provided the
+ * wordmark, the four-colour G and the proportions are right, which is what the
+ * caller draws.
+ *
+ * So the real button is still rendered — off-screen — and our button forwards
+ * the click to it. That keeps the supported flow (and its nonce, its popup
+ * handling, its FedCM path) rather than reimplementing any of it.
  */
-export async function renderGoogleButton(
-  parent: HTMLElement,
+export async function prepareGoogle(
+  host: HTMLElement,
   nonce: string,
   onToken: (idToken: string) => void,
   onError: (e: unknown) => void,
-): Promise<void> {
-  try {
-    const api = await loadGoogle();
-    api.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      nonce,
-      callback: (r) => {
-        if (r.credential) onToken(r.credential);
-        else onError(new Error('google_no_credential'));
-      },
-      // No silent sign-in: on a shared device that would pick an account for
-      // the user without them choosing.
-      auto_select: false,
-      cancel_on_tap_outside: true,
-    });
-    /* GIS renders at a FIXED pixel width and will not follow its container,
-       so it has to be measured. Passing a width wider than the slot is what
-       made the button overflow the card. Google clamps to 400. */
-    const paint = (): void => {
-      const w = Math.round(parent.getBoundingClientRect().width);
-      parent.replaceChildren();
-      api.renderButton(parent, {
-        type: 'standard',
-        theme: 'filled_black',   // sits on a dark card without a white slab
-        size: 'large',
-        text: 'continue_with',
-        shape: 'rectangular',    // matches the Apple button beside it
-        logo_alignment: 'left',
-        width: Math.min(Math.max(w || 320, 200), 400),
-      });
-    };
-    paint();
+): Promise<() => void> {
+  const api = await loadGoogle();
+  api.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    nonce,
+    callback: (r) => {
+      if (r.credential) onToken(r.credential);
+      else onError(new Error('google_no_credential'));
+    },
+    // No silent sign-in: on a shared device that would pick an account for the
+    // user without them choosing.
+    auto_select: false,
+    cancel_on_tap_outside: true,
+  });
 
-    // Rotation and keyboard open/close both change the width.
-    if (typeof ResizeObserver !== 'undefined') {
-      let last = Math.round(parent.getBoundingClientRect().width);
-      const ro = new ResizeObserver(() => {
-        const w = Math.round(parent.getBoundingClientRect().width);
-        if (Math.abs(w - last) > 4) { last = w; paint(); }
-      });
-      ro.observe(parent);
-    }
-  } catch (e) {
-    onError(e);
-  }
+  /* Off-screen, not display:none — GIS needs real layout to render into, and a
+     hidden element cannot be clicked. Kept out of the tab order and out of the
+     accessibility tree; our visible button carries the label. */
+  host.replaceChildren();
+  Object.assign(host.style, {
+    position: 'absolute', width: '320px', height: '44px',
+    left: '-10000px', top: '0', opacity: '0',
+    pointerEvents: 'none', overflow: 'hidden',
+  } satisfies Partial<CSSStyleDeclaration>);
+  host.setAttribute('aria-hidden', 'true');
+
+  api.renderButton(host, {
+    type: 'standard', theme: 'outline', size: 'large',
+    text: 'continue_with', shape: 'rectangular', width: 320,
+  });
+
+  return () => {
+    // GIS nests the clickable element; the exact class names are theirs and
+    // change, so find it by role rather than by class.
+    const target = host.querySelector<HTMLElement>('[role="button"]')
+      ?? host.querySelector<HTMLElement>('div > div');
+    if (target) target.click();
+    else onError(new Error('google_unavailable'));
+  };
 }

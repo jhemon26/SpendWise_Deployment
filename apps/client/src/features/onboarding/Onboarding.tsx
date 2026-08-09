@@ -372,7 +372,8 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
 
 const page: React.CSSProperties = {
   position: 'relative', minHeight: '100dvh', overflow: 'hidden',
-  background: 'var(--bg)',
+  background:
+    'radial-gradient(120% 80% at 50% -10%, #1A1F33 0%, #0E1220 38%, var(--bg) 78%)',
   color: 'var(--text)', fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
   display: 'grid', placeItems: 'center', padding: 'var(--s5)',
 };
@@ -380,7 +381,7 @@ const page: React.CSSProperties = {
 const glow: React.CSSProperties = {
   position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
   width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
-  background: 'radial-gradient(circle, rgba(99,102,241,.20) 0%, rgba(6,182,212,.08) 42%, transparent 68%)',
+  background: 'radial-gradient(circle, rgba(99,102,241,.30) 0%, rgba(6,182,212,.12) 42%, transparent 70%)',
 };
 const shell: React.CSSProperties = {
   position: 'relative', zIndex: 1, width: 'min(100%, 400px)', display: 'grid', gap: 'var(--s4)',
@@ -389,8 +390,9 @@ const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns:
 const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };
 const card: React.CSSProperties = {
   padding: 'var(--s5)', borderRadius: 22,
-  background: 'var(--surface)',
-  border: '1px solid var(--line)', boxShadow: 'var(--shadow)', display: 'grid', gap: 'var(--s3)',
+  background: 'var(--surface-2)',
+  border: '1px solid var(--line-strong)',
+  boxShadow: '0 24px 60px -24px rgba(0,0,0,.75)', display: 'grid', gap: 'var(--s3)',
 };
 const h1: React.CSSProperties = { fontSize: 25, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15 };
 const lede: React.CSSProperties = { fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.55 };

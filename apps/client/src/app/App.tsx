@@ -267,6 +267,23 @@ export function App(): JSX.Element {
 
   // An API is configured but nobody is signed in: show sign-in. With no API
   // the app runs entirely locally and never asks.
+  /* Nothing from a signed-in session may render before we know whether there
+     IS one. Falling through to the app while auth.restore() was still in
+     flight flashed the home screen — including the previous user's name and
+     avatar — on every refresh. */
+  if (API_BASE && !authChecked && !bootError) {
+    return (
+      <main style={{
+        minHeight: '100dvh', display: 'grid', placeItems: 'center',
+        // Same treatment as the sign-in screen, so the handover is invisible.
+        background: 'radial-gradient(120% 80% at 50% -10%, #1A1F33 0%, #0E1220 38%, var(--bg) 78%)',
+      }}>
+        <img src="/icon-192.png" alt="" width={56} height={56}
+             style={{ borderRadius: 16, opacity: .9 }} />
+      </main>
+    );
+  }
+
   if (API_BASE && authChecked && !signedIn) {
     return (
       <AuthScreen

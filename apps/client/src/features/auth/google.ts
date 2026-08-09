@@ -102,16 +102,33 @@ export async function renderGoogleButton(
       auto_select: false,
       cancel_on_tap_outside: true,
     });
-    parent.replaceChildren();
-    api.renderButton(parent, {
-      type: 'standard',
-      theme: 'outline',
-      size: 'large',
-      text: 'continue_with',
-      shape: 'pill',
-      logo_alignment: 'center',
-      width: Math.min(Math.max(parent.clientWidth || 320, 200), 400),
-    });
+    /* GIS renders at a FIXED pixel width and will not follow its container,
+       so it has to be measured. Passing a width wider than the slot is what
+       made the button overflow the card. Google clamps to 400. */
+    const paint = (): void => {
+      const w = Math.round(parent.getBoundingClientRect().width);
+      parent.replaceChildren();
+      api.renderButton(parent, {
+        type: 'standard',
+        theme: 'filled_black',   // sits on a dark card without a white slab
+        size: 'large',
+        text: 'continue_with',
+        shape: 'rectangular',    // matches the Apple button beside it
+        logo_alignment: 'left',
+        width: Math.min(Math.max(w || 320, 200), 400),
+      });
+    };
+    paint();
+
+    // Rotation and keyboard open/close both change the width.
+    if (typeof ResizeObserver !== 'undefined') {
+      let last = Math.round(parent.getBoundingClientRect().width);
+      const ro = new ResizeObserver(() => {
+        const w = Math.round(parent.getBoundingClientRect().width);
+        if (Math.abs(w - last) > 4) { last = w; paint(); }
+      });
+      ro.observe(parent);
+    }
   } catch (e) {
     onError(e);
   }

@@ -354,7 +354,8 @@ function AppleMark(): JSX.Element {
 const page: React.CSSProperties = {
   position: 'relative',
   minHeight: '100dvh',
-  background: 'var(--bg)',
+  background:
+    'radial-gradient(120% 80% at 50% -10%, #1A1F33 0%, #0E1220 38%, var(--bg) 78%)',
   color: 'var(--text)',
   display: 'grid',
   placeItems: 'center',
@@ -366,7 +367,7 @@ const page: React.CSSProperties = {
 const glow: React.CSSProperties = {
   position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
   width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
-  background: 'radial-gradient(circle, rgba(99,102,241,.20) 0%, rgba(6,182,212,.08) 42%, transparent 68%)',
+  background: 'radial-gradient(circle, rgba(99,102,241,.30) 0%, rgba(6,182,212,.12) 42%, transparent 70%)',
 };
 
 const shell: React.CSSProperties = {
@@ -386,9 +387,9 @@ const subhead: React.CSSProperties = {
 
 const card: React.CSSProperties = {
   padding: 'var(--s5)', borderRadius: 22,
-  background: 'var(--surface)',
-  border: '1px solid var(--line)',
-  boxShadow: 'var(--shadow)',
+  background: 'var(--surface-2)',
+  border: '1px solid var(--line-strong)',
+  boxShadow: '0 24px 60px -24px rgba(0,0,0,.75)',
 };
 
 const stack: React.CSSProperties = { display: 'grid', gap: 'var(--s3)' };

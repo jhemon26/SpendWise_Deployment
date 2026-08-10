@@ -106,7 +106,7 @@ export function AddSheet({
       aria-label={editing ? 'Edit transaction' : 'Add transaction'}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(8,8,10,.78)',
+        position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(5,7,14,.76)',
         backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-end',
       }}
     >

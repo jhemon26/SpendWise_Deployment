@@ -42,7 +42,7 @@ function Scrim({ onClose, centred, children }: {
         // Above the add sheet (100): the card editor can be opened from it, and
         // relying on DOM order for that is a trap for the next person.
         position: 'fixed', inset: 0, zIndex: 110,
-        background: 'rgba(8,8,10,.78)', backdropFilter: 'blur(8px)',
+        background: 'rgba(5,7,14,.76)', backdropFilter: 'blur(8px)',
         display: 'flex', alignItems: centred ? 'center' : 'flex-end',
         justifyContent: 'center', padding: centred ? 'var(--s5)' : 0,
       }}

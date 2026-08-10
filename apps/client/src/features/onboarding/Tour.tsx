@@ -90,7 +90,7 @@ export function Tour({ steps = DEFAULT_STEPS, onDone }: { steps?: TourStep[]; on
     borderRadius: 18,
     // A huge spread shadow dims everything EXCEPT this box — one element, no
     // four-panel overlay to keep in sync.
-    boxShadow: '0 0 0 9999px rgba(8,8,10,.85)',
+    boxShadow: '0 0 0 9999px rgba(5,7,14,.84)',
     border: '2px solid rgba(99,102,241,.9)',
     pointerEvents: 'none',
     zIndex: 200,

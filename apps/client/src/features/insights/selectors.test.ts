@@ -212,10 +212,17 @@ describe('billsFor', () => {
   const gym = cat({ name: 'Gym', is_fixed: true, due_day: 10, limit_minor: 3000 });
   const food = cat({ name: 'Groceries', is_fixed: false, limit_minor: 32000 });
 
-  it('only lists fixed categories that have a due day', () => {
+  it('lists every fixed category, with or without a due day', () => {
+    // This test previously asserted the opposite and so locked in a bug: an
+    // undated fixed cost was dropped from billsFor, which meant it never
+    // reached the budget totals either.
     const withoutDay = cat({ name: 'Misc fixed', is_fixed: true, due_day: null });
     const out = billsFor([rent, gym, food, withoutDay], [], NOW);
-    expect(out.map((b) => b.name)).toEqual(['Rent', 'Gym']);
+    expect(out.map((b) => b.name)).toEqual(['Rent', 'Gym', 'Misc fixed']);
+  });
+
+  it('excludes day-to-day categories', () => {
+    expect(billsFor([rent, food], [], NOW).map((b) => b.name)).toEqual(['Rent']);
   });
 
   it('orders by due day, soonest first', () => {
@@ -406,5 +413,46 @@ describe('month length and days left', () => {
     const feb = derive([], [], { ...ctx, now: new Date('2027-02-01T12:00:00') });
     const jan = derive([], [], { ...ctx, now: new Date('2027-01-01T12:00:00') });
     expect(feb.perDayMinor).toBeGreaterThan(jan.perDayMinor);
+  });
+});
+
+describe('fixed costs without a due day', () => {
+  // Reported from production: a £200 fixed cost added in Profile did not move
+  // the Budget stat or the "This month" total. It had no due day, and billsFor
+  // required one, so the money was committed but invisible to every figure.
+  const dated = cat({ name: 'Rent', is_fixed: true, due_day: 1, limit_minor: 90000 });
+  const undated = cat({ name: 'Gym', is_fixed: true, due_day: null, limit_minor: 20000 });
+
+  it('counts toward the fixed-costs total', () => {
+    expect(fixedCostsTotalMinor(billsFor([dated, undated], [], NOW))).toBe(110000);
+  });
+
+  it('appears in the fixed costs list', () => {
+    expect(billsFor([dated, undated], [], NOW).map((b) => b.name)).toContain('Gym');
+  });
+
+  it('carries a null due day rather than a fabricated one', () => {
+    const b = billsFor([undated], [], NOW)[0]!;
+    expect(b.dueDay).toBeNull();
+    expect(b.inDays).toBeNull();
+  });
+
+  it('is left out of "Coming up", which needs a date', () => {
+    expect(upcomingBills([dated, undated], [], NOW).map((b) => b.name)).toEqual(['Rent']);
+  });
+
+  it('sorts after the dated ones', () => {
+    const late = cat({ name: 'Phone', is_fixed: true, due_day: 28, limit_minor: 2000 });
+    expect(billsFor([undated, late, dated], [], NOW).map((b) => b.name))
+      .toEqual(['Rent', 'Phone', 'Gym']);
+  });
+
+  it('still reaches the budget figures through derive', () => {
+    const d = derive([], [dated, undated], {
+      now: NOW, dayToDayMinor: 84000, savingsTargetMinor: 0,
+      fixedCostsMinor: fixedCostsTotalMinor(billsFor([dated, undated], [], NOW)),
+    });
+    // 84000 day-to-day + 110000 fixed is what the Budget stat shows.
+    expect(84000 + d.committedFixedMinor).toBe(194000);
   });
 });

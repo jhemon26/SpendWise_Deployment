@@ -250,11 +250,13 @@ function BillRow({ bill, currency, now, divider, showStatus = false, compact = f
   bill: Bill; currency: string; now: Date; divider: boolean; showStatus?: boolean; compact?: boolean;
 }): JSX.Element {
   const c = bill.category;
-  const when = bill.paid
-    ? `Paid ${bill.dueDay} ${monthShort(now)}`
-    : bill.inDays <= 0
-      ? 'Overdue'
-      : `Due ${bill.dueDay} ${monthShort(now)} · ${bill.inDays} ${bill.inDays === 1 ? 'day' : 'days'}`;
+  const when = bill.dueDay === null
+    ? (bill.paid ? 'Paid this month' : 'No due day set')
+    : bill.paid
+      ? `Paid ${bill.dueDay} ${monthShort(now)}`
+      : bill.inDays !== null && bill.inDays <= 0
+        ? 'Overdue'
+        : `Due ${bill.dueDay} ${monthShort(now)} · ${bill.inDays} ${bill.inDays === 1 ? 'day' : 'days'}`;
   return (
     <>
       {divider && <div style={{ height: 1, background: 'var(--line)' }} />}

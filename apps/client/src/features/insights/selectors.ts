@@ -207,10 +207,11 @@ export interface Bill {
   category: Category;
   name: string;
   amountMinor: number;
-  dueDay: number;
+  /** Null when no due day is set. The cost still counts; it just has no date. */
+  dueDay: number | null;
   paid: boolean;
-  /** Negative once the due day has passed. */
-  inDays: number;
+  /** Negative once the due day has passed. Null when there is no due day. */
+  inDays: number | null;
 }
 
 /**
@@ -235,20 +236,34 @@ export function billsFor(
   );
 
   return categories
-    .filter((c) => c.is_fixed && !c.deleted_at && c.due_day !== null)
+    /*
+     * Every fixed category, dated or not.
+     *
+     * This used to require a due day, which meant a fixed cost created without
+     * one vanished from the totals entirely — the money was committed but the
+     * budget figures never saw it. A missing date is missing detail, not a
+     * reason for the cost to not exist.
+     */
+    .filter((c) => c.is_fixed && !c.deleted_at)
     .map((c) => {
       // A 31st falls back to the last day rather than spilling into next month.
-      const dueDay = Math.min(c.due_day as number, daysInMonth);
+      const dueDay = c.due_day === null ? null : Math.min(c.due_day, daysInMonth);
       return {
         category: c,
         name: c.name,
         amountMinor: c.limit_minor,
         dueDay,
         paid: paidIds.has(c.local_id),
-        inDays: dueDay - dayOfMonth,
+        inDays: dueDay === null ? null : dueDay - dayOfMonth,
       };
     })
-    .sort((a, b) => a.dueDay - b.dueDay);
+    // Dated first, in date order; undated after them, since they cannot be
+    // placed on the calendar.
+    .sort((a, b) => {
+      if (a.dueDay === null) return b.dueDay === null ? 0 : 1;
+      if (b.dueDay === null) return -1;
+      return a.dueDay - b.dueDay;
+    });
 }
 
 /** Still genuinely owed, soonest first — what the home screen warns about. */
@@ -258,7 +273,11 @@ export function upcomingBills(
   now: Date,
   limit = 2,
 ): Bill[] {
-  return billsFor(categories, transactions, now).filter((b) => !b.paid).slice(0, limit);
+  // "Coming up" is a calendar, so an undated cost has nothing to show there —
+  // it still counts in the totals, it just cannot be scheduled.
+  return billsFor(categories, transactions, now)
+    .filter((b) => !b.paid && b.dueDay !== null)
+    .slice(0, limit);
 }
 
 export const fixedCostsTotalMinor = (bills: Bill[]): number =>

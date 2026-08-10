@@ -240,9 +240,13 @@ export function AddSheet({
           </>
         )}
 
-        {banks.filter((b) => !b.deleted_at).length > 0 && (
+        <p style={labelStyle}>Paid with</p>
+        {banks.filter((b) => !b.deleted_at).length === 0 ? (
+          <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, paddingBottom: 'var(--s3)' }}>
+            Add cards in Profile → Banks &amp; cards.
+          </p>
+        ) : (
           <>
-            <p style={labelStyle}>Paid with</p>
             {/* Icons only, matching the category rows above. Cards are created
                 and named in Profile; nothing is typed here. */}
             <div role="group" aria-label="Card" style={stripStyle}>

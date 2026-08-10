@@ -93,6 +93,9 @@ export function App(): JSX.Element {
       // Devices set up before demo seeding was restricted still hold those rows.
       if (API_BASE) await purgeDemoRows();
       await state.hydrate(db);
+      // After hydrate: upsertBank writes through the store, which needs the
+      // hydrated list to append to rather than overwrite.
+      await ensureDefaultBanks();
     })().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       // eslint-disable-next-line no-console
@@ -119,6 +122,29 @@ export function App(): JSX.Element {
         if (r.device_id !== 'demo' || r.deleted_at) continue;
         await db.put(table, { ...r, deleted_at: at, sync_status: 'synced' });
       }
+    }
+  }
+
+  /**
+   * Every account needs something to pay with.
+   *
+   * Onboarding created categories but never a single payment method, so the
+   * card picker had nothing to show and hid itself — which looked like a
+   * missing feature rather than empty data. These are the four everyone has;
+   * they are renamed, recoloured or deleted in Profile like any other.
+   *
+   * Only ever created when there are none, so it cannot duplicate or come back
+   * after someone deliberately deletes them all.
+   */
+  async function ensureDefaultBanks(): Promise<void> {
+    if ((await db.all('banks')).some((b) => !b.deleted_at)) return;
+    for (const [name, colour] of [
+      ['Debit card', '#6366F1'],
+      ['Credit card', '#A855F7'],
+      ['Cash', '#10B981'],
+      ['Bank transfer', '#22D3EE'],
+    ] as const) {
+      await state.upsertBank(db, { name, colour });
     }
   }
 

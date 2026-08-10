@@ -172,7 +172,10 @@ export async function renderGoogleButton(
         // One correction only. A loop here would fight the ResizeObserver.
         if (over > 1) draw(want - over);
         requestAnimationFrame(() => {
-          const r = parent.getBoundingClientRect();
+          // Google's own element, not our wrapper: the wrapper can stretch and
+          // would report a height the button does not actually have.
+          const el = (parent.firstElementChild as HTMLElement | null) ?? parent;
+          const r = el.getBoundingClientRect();
           if (r.height > 20 && onMeasured) {
             onMeasured({ width: Math.round(r.width), height: Math.round(r.height) });
           }

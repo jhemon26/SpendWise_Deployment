@@ -206,9 +206,11 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             <div style={stack}>
               {GOOGLE_CLIENT_ID && googleReady
                 ? <div ref={googleSlot} style={{
-                    display: 'grid', justifyItems: 'center', minHeight: 40,
-                    // Nothing may paint outside the column, whatever GIS does.
-                    overflow: 'hidden', borderRadius: 4,
+                    /* No clipping and no fixed height. overflow:hidden here
+                       cropped the button into a strip once the row height came
+                       from measurement, and the width correction already keeps
+                       it inside the column, so the clip earned nothing. */
+                    display: 'flex', justifyContent: 'center', alignItems: 'center',
                   }} />
                 : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
               <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} size={row} />

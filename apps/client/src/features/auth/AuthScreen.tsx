@@ -63,7 +63,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const googleSlot = useRef<HTMLDivElement | null>(null);
   const [googleReady] = useState(true);
   // Whatever Google actually painted; every other button matches it exactly.
-  const [row, setRow] = useState<{ width: number | null; height: number }>({ width: null, height: 44 });
+  const [row, setRow] = useState<{ width: number | null; height: number }>({ width: null, height: 40 });
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
 
@@ -108,7 +108,11 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Google sign-in is unavailable (${msg}). Use your mobile number.`);
       },
-      ({ width, height }) => setRow({ width, height: Math.max(44, height) }),
+      /* Match Google exactly. A 44px floor here would have made the other two
+         taller than the medium button and reintroduced the mismatch this whole
+         change exists to remove; 36 is Google's own medium height, so it is the
+         floor rather than an ideal. */
+      ({ width, height }) => setRow({ width, height: Math.max(36, height) }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
@@ -202,7 +206,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             <div style={stack}>
               {GOOGLE_CLIENT_ID && googleReady
                 ? <div ref={googleSlot} style={{
-                    display: 'grid', justifyItems: 'center', minHeight: 44,
+                    display: 'grid', justifyItems: 'center', minHeight: 40,
                     // Nothing may paint outside the column, whatever GIS does.
                     overflow: 'hidden', borderRadius: 4,
                   }} />
@@ -478,7 +482,7 @@ const digitBox = (filled: boolean): React.CSSProperties => ({
  * also the floor for a reliable tap.
  */
 const base: React.CSSProperties = {
-  width: '100%', minHeight: 44, borderRadius: 4, border: 0,
+  width: '100%', minHeight: 40, borderRadius: 4, border: 0,
   fontSize: 14, fontWeight: 500, letterSpacing: '.01em', cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   position: 'relative', padding: '0 12px',

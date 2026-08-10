@@ -62,6 +62,8 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [cooldown, setCooldown] = useState(0);
   const googleSlot = useRef<HTMLDivElement | null>(null);
   const [googleReady] = useState(true);
+  // Whatever Google rendered; the other buttons match it.
+  const [rowHeight, setRowHeight] = useState(44);
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
 
@@ -106,6 +108,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Google sign-in is unavailable (${msg}). Use your mobile number.`);
       },
+      (px) => setRowHeight(Math.max(44, px)),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
@@ -200,14 +203,14 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
               {GOOGLE_CLIENT_ID && googleReady
                 ? <div ref={googleSlot} style={{ display: 'grid', justifyItems: 'stretch', minHeight: 44 }} />
                 : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
-              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
+              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} height={rowHeight} />
               {soon && (
                 <p role="status" style={soonNote}>
                   {soon} sign-in is coming soon. Use your mobile number for now.
                 </p>
               )}
               <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
-              <button type="button" onClick={() => setStage('phone')} style={secondaryDark}>
+              <button type="button" onClick={() => setStage('phone')} style={{ ...secondaryDark, minHeight: rowHeight }}>
                 Continue with mobile number
               </button>
             </div>
@@ -321,14 +324,16 @@ function Spinner(): JSX.Element {
  * four-colour G on a light surface, so this one deliberately breaks the dark
  * palette — a recoloured G is a brand violation and reads as a phishing page.
  */
-function Provider({ kind, ready, onUnavailable, onStart }: {
+function Provider({ kind, ready, onUnavailable, onStart, height }: {
   kind: 'google' | 'apple';
   ready: boolean;
   onUnavailable: (name: string) => void;
   onStart?: (() => void) | undefined;
+  height?: number | undefined;
 }): JSX.Element {
   const name = kind === 'google' ? 'Google' : 'Apple';
-  const style = kind === 'google' ? googleBtn : appleBtn;
+  const base2 = kind === 'google' ? googleBtn : appleBtn;
+  const style = height ? { ...base2, minHeight: height } : base2;
   return (
     <button
       type="button"

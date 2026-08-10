@@ -94,6 +94,15 @@ export async function renderGoogleButton(
   nonce: string,
   onToken: (idToken: string) => void,
   onError: (e: unknown) => void,
+  /**
+   * Reports the height Google actually rendered.
+   *
+   * It varies: a visitor already signed in to Google gets the PERSONALISED
+   * button — two lines, name over email, plus a chevron — which is noticeably
+   * taller than the plain one everyone else sees. No fixed height can match
+   * both, so the caller sizes the other buttons from this instead.
+   */
+  onHeight?: (px: number) => void,
 ): Promise<void> {
   try {
     const api = await loadGoogle();
@@ -129,6 +138,11 @@ export async function renderGoogleButton(
         // phone buttons now copy, so the three read as one group.
         logo_alignment: 'left',
         width: Math.min(Math.max(w, 200), 400), // Google clamps at 400
+      });
+      // Measured after the frame Google paints into.
+      requestAnimationFrame(() => {
+        const h = Math.round(parent.getBoundingClientRect().height);
+        if (h > 20 && onHeight) onHeight(h);
       });
     };
     paint();

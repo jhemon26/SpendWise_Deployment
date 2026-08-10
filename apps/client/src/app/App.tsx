@@ -526,14 +526,21 @@ export function App(): JSX.Element {
           aria-label="Add transaction"
           data-tour="add"
           style={{
-            width: 56, height: 56, borderRadius: 'var(--r-pill)', justifySelf: 'center', border: 0,
-            background: 'linear-gradient(135deg,var(--brand-cyan) 0%,var(--brand) 55%,var(--brand-purple) 100%)',
+            /* A squircle, not a circle: the tri-colour gradient and halo read
+               as a toy next to the rest of the app. One brand colour, one soft
+               shadow, and the shape the tab icons already use. */
+            width: 54, height: 54, borderRadius: 18, justifySelf: 'center', border: 0,
+            background: 'var(--brand)',
             color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer',
-            boxShadow: '0 8px 22px -6px rgba(99,102,241,.75), 0 0 0 5px rgba(99,102,241,.10)',
+            boxShadow: '0 10px 24px -10px rgba(99,102,241,.95)',
+            transition: 'transform .14s cubic-bezier(.2,.9,.25,1), background .14s ease',
           }}
+          onPointerDown={(e) => { e.currentTarget.style.transform = 'scale(.93)'; }}
+          onPointerUp={(e) => { e.currentTarget.style.transform = ''; }}
+          onPointerLeave={(e) => { e.currentTarget.style.transform = ''; }}
         >
-          <svg viewBox="0 0 24 24" width={24} height={24} stroke="currentColor" strokeWidth={2.4}
-               fill="none" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+          <svg viewBox="0 0 24 24" width={26} height={26} stroke="currentColor" strokeWidth={2.6}
+               fill="none" strokeLinecap="round"><path d="M12 5.5v13M5.5 12h13" /></svg>
         </button>
 
         {TABS.slice(2).map((t) => (

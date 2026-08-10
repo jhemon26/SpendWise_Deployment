@@ -196,6 +196,25 @@ export function AddSheet({
 
         {!isIncome && (
           <>
+            {/* Say which pot this lands in, at the moment of choosing. The
+                classification drives every figure on Home, so it should not be
+                something the user has to infer afterwards. */}
+            {category && (
+              <p style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginTop: 'var(--s1)',
+                fontSize: 'var(--fs-2xs)', fontWeight: 700,
+                color: isFixedSpend ? 'var(--text-muted)' : 'var(--brand-cyan)',
+              }}>
+                <i style={{
+                  width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                  background: isFixedSpend ? 'var(--text-dim)' : 'var(--brand-cyan)',
+                }} />
+                {isFixedSpend
+                  ? 'Counts as a bill — does not change what is safe to spend'
+                  : 'Counts against your day-to-day budget'}
+              </p>
+            )}
+
             <p style={labelStyle}>Day-to-day</p>
             <div role="group" aria-label="Day-to-day category" style={stripStyle}>
               {flex.map((c) => (
@@ -246,28 +265,15 @@ export function AddSheet({
               </>
             )}
 
-            {/* Say which pot this lands in, at the moment of choosing. The
-                classification drives every figure on Home, so it should not be
-                something the user has to infer afterwards. */}
-            {category && (
-              <p style={{
-                display: 'flex', alignItems: 'center', gap: 6, marginTop: 'var(--s1)',
-                fontSize: 'var(--fs-2xs)', fontWeight: 700,
-                color: isFixedSpend ? 'var(--text-muted)' : 'var(--brand-cyan)',
-              }}>
-                <i style={{
-                  width: 7, height: 7, borderRadius: 999, flexShrink: 0,
-                  background: isFixedSpend ? 'var(--text-dim)' : 'var(--brand-cyan)',
-                }} />
-                {isFixedSpend
-                  ? 'Counts as a bill — does not change what is safe to spend'
-                  : 'Counts against your day-to-day budget'}
-              </p>
-            )}
           </>
         )}
 
         <p style={labelStyle}>Paid with</p>
+        {banks.filter((b) => !b.deleted_at).length === 0 && (
+          <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, paddingBottom: 'var(--s3)' }}>
+            No cards yet — add one in Profile to track where money goes.
+          </p>
+        )}
         <div role="group" aria-label="Bank or card" style={stripStyle}>
           {banks.filter((b) => !b.deleted_at).map((b) => (
             <button
@@ -370,5 +376,10 @@ const labelStyle = {
 
 const stripStyle = {
   display: 'flex', gap: 'var(--s2)', overflowX: 'auto' as const,
-  padding: '2px 0 var(--s3)', scrollbarWidth: 'none' as const,
+  // Bleed to the sheet edges but keep padding inside, so the first and last
+  // chip are never clipped and a selected one can scroll fully into view.
+  margin: '0 calc(-1 * var(--s5))',
+  padding: '2px var(--s5) var(--s3)',
+  scrollbarWidth: 'none' as const,
+  scrollSnapType: 'x proximity' as const,
 };

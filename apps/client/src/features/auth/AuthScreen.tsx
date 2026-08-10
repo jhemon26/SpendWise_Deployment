@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
-import { GOOGLE_CLIENT_ID, newNonce, prepareGoogle } from './google.js';
+import { GOOGLE_CLIENT_ID, newNonce, renderGoogleButton } from './google.js';
 
 /**
  * Sign-in (ARCHITECTURE §9.1).
@@ -61,7 +61,6 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const googleSlot = useRef<HTMLDivElement | null>(null);
-  const googleTrigger = useRef<(() => void) | null>(null);
   const [googleReady, setGoogleReady] = useState(true);
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
@@ -82,13 +81,13 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  /* The real Google button is rendered off-screen; ours forwards the click. */
+  /* Google's own button, rendered in place. It only exists on the chooser, so
+     this waits for that stage rather than for mount. */
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
+    if (stage !== 'choose' || !GOOGLE_CLIENT_ID) return;
     const host = googleSlot.current;
     if (!host) return;
-    let live = true;
-    void prepareGoogle(
+    void renderGoogleButton(
       host,
       nonce.current,
       (idToken: string) => {
@@ -97,13 +96,10 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
           .catch((e: unknown) => { say(e); setBusy(false); });
       },
-      () => setError('Google sign-in is unavailable. Use your mobile number.'),
-    )
-      .then((trigger) => { if (live) googleTrigger.current = trigger; })
-      .catch(() => { if (live) setGoogleReady(false); });
-    return () => { live = false; };
+      () => setGoogleReady(false),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stage]);
 
   const say = (err: unknown): void => {
     const c = (err as { code?: string }).code ?? '';
@@ -192,12 +188,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              <Provider
-                kind="google"
-                ready={Boolean(GOOGLE_CLIENT_ID) && googleReady}
-                onUnavailable={setSoon}
-                onStart={() => googleTrigger.current?.()}
-              />
+              {GOOGLE_CLIENT_ID && googleReady
+                ? <div ref={googleSlot} style={{ display: 'grid', justifyItems: 'stretch', minHeight: 44 }} />
+                : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
               <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
               {soon && (
                 <p role="status" style={soonNote}>
@@ -288,8 +281,6 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             </div>
           )}
         </div>
-
-        <div ref={googleSlot} />
 
         <p style={microcopy}>
           <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden stroke="currentColor" strokeWidth={2}

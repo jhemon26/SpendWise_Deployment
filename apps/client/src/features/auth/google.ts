@@ -77,60 +77,63 @@ export function newNonce(): string {
 }
 
 /**
- * Prepare sign-in and return a trigger for our own button.
+ * Render Google's own button into `parent`.
  *
- * Google's rendered button will not sit on a dark card — its wrapper paints its
- * own white surround at the container's width, which reads as a slab rather
- * than a button. Their guidelines do permit a custom button provided the
- * wordmark, the four-colour G and the proportions are right, which is what the
- * caller draws.
+ * An earlier version rendered it off-screen and forwarded clicks from a custom
+ * button. That looked better and did not work: GIS may render inside a
+ * cross-origin iframe, where querySelector finds nothing, so the forwarded
+ * click hit an inert wrapper and nothing happened — a sign-in button that
+ * silently does nothing is worse than one that looks slightly off-brand.
  *
- * So the real button is still rendered — off-screen — and our button forwards
- * the click to it. That keeps the supported flow (and its nonce, its popup
- * handling, its FedCM path) rather than reimplementing any of it.
+ * So this uses the supported path. GIS renders at a FIXED pixel width and will
+ * not follow its container, so the width is measured and re-measured.
  */
-export async function prepareGoogle(
-  host: HTMLElement,
+export async function renderGoogleButton(
+  parent: HTMLElement,
   nonce: string,
   onToken: (idToken: string) => void,
   onError: (e: unknown) => void,
-): Promise<() => void> {
-  const api = await loadGoogle();
-  api.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    nonce,
-    callback: (r) => {
-      if (r.credential) onToken(r.credential);
-      else onError(new Error('google_no_credential'));
-    },
-    // No silent sign-in: on a shared device that would pick an account for the
-    // user without them choosing.
-    auto_select: false,
-    cancel_on_tap_outside: true,
-  });
+): Promise<void> {
+  try {
+    const api = await loadGoogle();
+    api.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      nonce,
+      callback: (r) => {
+        if (r.credential) onToken(r.credential);
+        else onError(new Error('google_no_credential'));
+      },
+      // No silent sign-in: on a shared device that would pick an account for
+      // the user without them choosing.
+      auto_select: false,
+      cancel_on_tap_outside: true,
+    });
 
-  /* Off-screen, not display:none — GIS needs real layout to render into, and a
-     hidden element cannot be clicked. Kept out of the tab order and out of the
-     accessibility tree; our visible button carries the label. */
-  host.replaceChildren();
-  Object.assign(host.style, {
-    position: 'absolute', width: '320px', height: '44px',
-    left: '-10000px', top: '0', opacity: '0',
-    pointerEvents: 'none', overflow: 'hidden',
-  } satisfies Partial<CSSStyleDeclaration>);
-  host.setAttribute('aria-hidden', 'true');
+    const paint = (): void => {
+      const w = Math.round(parent.getBoundingClientRect().width);
+      if (w < 40) return;                       // not laid out yet
+      parent.replaceChildren();
+      api.renderButton(parent, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'rectangular',
+        logo_alignment: 'left',
+        width: Math.min(Math.max(w, 200), 400), // Google clamps at 400
+      });
+    };
+    paint();
 
-  api.renderButton(host, {
-    type: 'standard', theme: 'outline', size: 'large',
-    text: 'continue_with', shape: 'rectangular', width: 320,
-  });
-
-  return () => {
-    // GIS nests the clickable element; the exact class names are theirs and
-    // change, so find it by role rather than by class.
-    const target = host.querySelector<HTMLElement>('[role="button"]')
-      ?? host.querySelector<HTMLElement>('div > div');
-    if (target) target.click();
-    else onError(new Error('google_unavailable'));
-  };
+    if (typeof ResizeObserver !== 'undefined') {
+      let last = Math.round(parent.getBoundingClientRect().width);
+      const ro = new ResizeObserver(() => {
+        const w = Math.round(parent.getBoundingClientRect().width);
+        if (Math.abs(w - last) > 4) { last = w; paint(); }
+      });
+      ro.observe(parent);
+    }
+  } catch (e) {
+    onError(e);
+  }
 }

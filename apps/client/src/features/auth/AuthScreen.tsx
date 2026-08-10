@@ -178,7 +178,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
               : stage === 'phone' ? 'We’ll text you a code.'
-                : 'See what’s actually yours to spend.'}
+                : 'Track your spending against a monthly budget, with bills kept separate.'}
           </p>
         </header>
 
@@ -405,11 +405,11 @@ const headline: React.CSSProperties = {
 };
 
 const subhead: React.CSSProperties = {
-  fontSize: 17, fontWeight: 500, color: 'var(--text-muted)',
+  fontSize: 16, fontWeight: 500, color: 'var(--text-muted)',
   // Space enough to read as its own line, not a caption pinned to the title.
   marginTop: 'var(--s4)', lineHeight: 1.45, letterSpacing: '-.01em',
-  // ~22ch breaks it across two balanced lines instead of one long thin one.
-  maxWidth: '22ch', marginInline: 'auto',
+  // ~30ch gives two or three even lines at this length.
+  maxWidth: '30ch', marginInline: 'auto',
 };
 
 /** No panel: three buttons on a dark field do not need a frame around them. */

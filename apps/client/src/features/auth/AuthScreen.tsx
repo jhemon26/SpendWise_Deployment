@@ -178,7 +178,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
               : stage === 'phone' ? 'We’ll text you a code.'
-                : 'Track your spending against a monthly budget, with bills kept separate.'}
+                : 'Track your spending against a monthly budget.'}
           </p>
         </header>
 
@@ -299,6 +299,10 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           </svg>
           Passwordless. Verified by Google, Apple or a one-time code.
         </p>
+
+        {/* Year from the clock, not a literal — a hardcoded one is wrong every
+            January and nobody notices until a user does. */}
+        <p style={legal}>© {new Date().getFullYear()} SpendWise</p>
       </section>
     </main>
   );
@@ -524,6 +528,11 @@ const soonNote: React.CSSProperties = {
   lineHeight: 1.45,
 };
 
+
+const legal: React.CSSProperties = {
+  fontSize: 11, color: 'var(--text-dim)', textAlign: 'center',
+  opacity: .7, letterSpacing: '.02em', marginTop: 'calc(-1 * var(--s4))',
+};
 
 const microcopy: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,

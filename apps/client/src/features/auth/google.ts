@@ -97,12 +97,14 @@ export async function renderGoogleButton(
   /**
    * Reports the height Google actually rendered.
    *
-   * It varies: a visitor already signed in to Google gets the PERSONALISED
-   * button — two lines, name over email, plus a chevron — which is noticeably
-   * taller than the plain one everyone else sees. No fixed height can match
-   * both, so the caller sizes the other buttons from this instead.
+   * Both dimensions vary and neither can be dictated. A visitor already signed
+   * in to Google gets the PERSONALISED button — two lines, name over email,
+   * plus a chevron — which is taller than the plain one. And GIS adds its own
+   * padding beyond the requested width, so the painted button is wider than
+   * asked for and overhangs anything sized to match. The caller sizes the other
+   * buttons from what actually landed.
    */
-  onHeight?: (px: number) => void,
+  onMeasured?: (size: { width: number; height: number }) => void,
 ): Promise<void> {
   try {
     const api = await loadGoogle();
@@ -141,8 +143,11 @@ export async function renderGoogleButton(
       });
       // Measured after the frame Google paints into.
       requestAnimationFrame(() => {
-        const h = Math.round(parent.getBoundingClientRect().height);
-        if (h > 20 && onHeight) onHeight(h);
+        const el = parent.firstElementChild as HTMLElement | null;
+        const r = (el ?? parent).getBoundingClientRect();
+        if (r.height > 20 && onMeasured) {
+          onMeasured({ width: Math.round(r.width), height: Math.round(r.height) });
+        }
       });
     };
     paint();

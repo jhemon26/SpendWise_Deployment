@@ -62,8 +62,8 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [cooldown, setCooldown] = useState(0);
   const googleSlot = useRef<HTMLDivElement | null>(null);
   const [googleReady] = useState(true);
-  // Whatever Google rendered; the other buttons match it.
-  const [rowHeight, setRowHeight] = useState(44);
+  // Whatever Google actually painted; every other button matches it exactly.
+  const [row, setRow] = useState<{ width: number | null; height: number }>({ width: null, height: 44 });
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
 
@@ -108,7 +108,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Google sign-in is unavailable (${msg}). Use your mobile number.`);
       },
-      (px) => setRowHeight(Math.max(44, px)),
+      ({ width, height }) => setRow({ width, height: Math.max(44, height) }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
@@ -201,16 +201,16 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           {stage === 'choose' && (
             <div style={stack}>
               {GOOGLE_CLIENT_ID && googleReady
-                ? <div ref={googleSlot} style={{ display: 'grid', justifyItems: 'stretch', minHeight: 44 }} />
+                ? <div ref={googleSlot} style={{ display: 'grid', justifyItems: 'center', minHeight: 44 }} />
                 : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
-              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} height={rowHeight} />
+              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} size={row} />
               {soon && (
                 <p role="status" style={soonNote}>
                   {soon} sign-in is coming soon. Use your mobile number for now.
                 </p>
               )}
               <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
-              <button type="button" onClick={() => setStage('phone')} style={{ ...secondaryDark, minHeight: rowHeight }}>
+              <button type="button" onClick={() => setStage('phone')} style={{ ...secondaryDark, ...sizeOf(row) }}>
                 Continue with mobile number
               </button>
             </div>
@@ -324,16 +324,15 @@ function Spinner(): JSX.Element {
  * four-colour G on a light surface, so this one deliberately breaks the dark
  * palette — a recoloured G is a brand violation and reads as a phishing page.
  */
-function Provider({ kind, ready, onUnavailable, onStart, height }: {
+function Provider({ kind, ready, onUnavailable, onStart, size }: {
   kind: 'google' | 'apple';
   ready: boolean;
   onUnavailable: (name: string) => void;
   onStart?: (() => void) | undefined;
-  height?: number | undefined;
+  size?: RowSize | undefined;
 }): JSX.Element {
   const name = kind === 'google' ? 'Google' : 'Apple';
-  const base2 = kind === 'google' ? googleBtn : appleBtn;
-  const style = height ? { ...base2, minHeight: height } : base2;
+  const style = { ...(kind === 'google' ? googleBtn : appleBtn), ...(size ? sizeOf(size) : {}) };
   return (
     <button
       type="button"
@@ -367,6 +366,20 @@ function AppleMark(): JSX.Element {
     </svg>
   );
 }
+
+interface RowSize { width: number | null; height: number }
+
+/**
+ * Match Google's painted box exactly.
+ *
+ * Width matters as much as height: GIS pads beyond the width it is given, so a
+ * button sized to the container overhangs the ones beside it by a few pixels —
+ * which is what read as a white edge sticking out around the Google row.
+ */
+const sizeOf = (s: RowSize): React.CSSProperties => ({
+  minHeight: s.height,
+  ...(s.width ? { width: s.width, justifySelf: 'center' } : {}),
+});
 
 /* ── styles ─────────────────────────────────────────────────────────────── */
 

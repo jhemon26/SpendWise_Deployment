@@ -127,30 +127,34 @@ export async function renderGoogleButton(
     });
 
     /*
-     * GIS pads beyond the width it is given, so asking for the column width
-     * paints something wider that overhangs the buttons beside it. The overhang
-     * is not documented and not constant, so it is measured and subtracted
-     * rather than guessed at: render, measure, correct once.
+     * Two documented GIS behaviours drove every earlier attempt at this wrong.
+     *
+     * 1. `width` is the MINIMUM button width, not the exact one — Google's
+     *    reference says so plainly. The button may paint wider, which is the
+     *    overhang that read as a white frame around the row. It cannot be
+     *    dictated, only measured and corrected for.
+     *
+     * 2. The PERSONALISED button ("Continue as <name>" over the email, taller
+     *    and a different shape) is suppressed only when size is `medium` or
+     *    `small`, when type is `icon`, or when width is under 200px. No amount
+     *    of styling or disableAutoSelect() removes it at size `large` — which
+     *    is why it kept coming back.
+     *
+     * So: size `medium` for one predictable button for every visitor, and a
+     * measure-and-correct pass for the width.
+     *
+     * https://developers.google.com/identity/gsi/web/guides/personalized-button
+     * https://developers.google.com/identity/gsi/web/reference/js-reference
      */
     const target = (): number => Math.round(parent.getBoundingClientRect().width);
 
     const draw = (requested: number): void => {
-      /*
-       * Ask Google to forget the remembered session before drawing.
-       *
-       * With one, GIS renders the PERSONALISED button — name over email plus a
-       * chevron — which is a different size and shape from the plain one and is
-       * what will not line up with the buttons beside it. This is the only lever
-       * Google exposes over that; if the personalised button still appears, the
-       * rendered button cannot be made to match and it has to be replaced with
-       * our own via the redirect flow.
-       */
-      try { api.disableAutoSelect(); } catch { /* older SDK: nothing to clear */ }
       parent.replaceChildren();
       api.renderButton(parent, {
         type: 'standard',
         theme: 'outline',
-        size: 'large',
+        // NOT 'large': that is what re-enables the personalised button.
+        size: 'medium',
         text: 'continue_with',
         shape: 'rectangular',
         logo_alignment: 'left',

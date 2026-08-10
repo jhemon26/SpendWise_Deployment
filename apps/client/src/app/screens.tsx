@@ -158,8 +158,13 @@ export function Home({
             display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
             marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
           }}>
-            {([['Budget', money0(dayToDayMinor + d.committedFixedMinor, currency), false],
-               ['Spent', money(d.monthTotalMinor, currency), false],
+            {/* "Budget £1,040" above "Available £840" read as a mistake: the two
+                cannot be reconciled without knowing that bills are excluded from
+                the headline. Naming the two pots separately makes the headline
+                obviously equal to the day-to-day figure, and shows the bills
+                total that was previously folded away. */}
+            {([['Day-to-day', money0(dayToDayMinor, currency), false],
+               ['Bills', money0(d.committedFixedMinor, currency), false],
                ['Saving goal', savingsTargetMinor > 0 ? money0(savingsTargetMinor, currency) : '—', true]] as const).map(([k, v, piggy]) => (
               <div key={k} style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>

@@ -26,6 +26,14 @@ export interface SyncTransport {
 }
 
 export interface EngineOptions {
+  /**
+   * Called after a cycle that wrote rows pulled from the server.
+   *
+   * The engine writes straight to the database; the in-memory store is a
+   * separate copy, loaded once at boot. Without this the two silently diverge —
+   * pulled data sits in IndexedDB, invisible until a reload.
+   */
+  onPulled?: () => void;
   baseIntervalMs?: number;
   jitterMs?: number;
   maxAttempts?: number;
@@ -43,6 +51,7 @@ export class SyncEngine {
   private readonly base: number;
   private readonly jitter: number;
   private readonly maxAttempts: number;
+  private readonly onPulled: (() => void) | undefined;
   private readonly now: () => Date;
   private readonly random: () => number;
 
@@ -59,6 +68,7 @@ export class SyncEngine {
     this.maxAttempts = opts.maxAttempts ?? 10;
     this.now = opts.now ?? (() => new Date());
     this.random = opts.random ?? Math.random;
+    this.onPulled = opts.onPulled;
   }
 
   getState(): SyncState {
@@ -122,7 +132,8 @@ export class SyncEngine {
       await this.pushPending();
 
       this.setState('pulling');
-      await this.pullChanges();
+      const wrote = await this.pullChanges();
+      if (wrote) this.onPulled?.();
 
       this.attempt = 0;
       this.setState('idle');
@@ -164,9 +175,11 @@ export class SyncEngine {
     }
   }
 
-  private async pullChanges(): Promise<void> {
+  /** Resolves true when anything was written, so the caller can refresh. */
+  private async pullChanges(): Promise<boolean> {
     let cursor: string | null = null;
     let guard = 0;
+    let wrote = false;
     do {
       const page: Awaited<ReturnType<SyncTransport['pull']>> = await this.transport.pull(
         this.lastPulledAt,
@@ -176,18 +189,19 @@ export class SyncEngine {
          BEFORE the transactions matters: a transaction whose category has not
          landed yet renders as "Uncategorised" until the next cycle. */
       const cats = page.categories as Category[];
-      if (cats.length) await this.db.bulkPut('categories', cats);
+      if (cats.length) { await this.db.bulkPut('categories', cats); wrote = true; }
       const bnks = page.banks as Bank[];
-      if (bnks.length) await this.db.bulkPut('banks', bnks);
+      if (bnks.length) { await this.db.bulkPut('banks', bnks); wrote = true; }
 
       // bulkPut is generic over the table, so name the table to pin the element
       // type rather than casting through `unknown` and losing the check.
       const rows = page.transactions as Transaction[];
-      if (rows.length) await this.db.bulkPut('transactions', rows);
+      if (rows.length) { await this.db.bulkPut('transactions', rows); wrote = true; }
       cursor = page.next_cursor;
       this.lastPulledAt = page.server_time;
       if (++guard > 100) break; // a server that never stops paginating
     } while (cursor);
+    return wrote;
   }
 
   /** Test seam. */

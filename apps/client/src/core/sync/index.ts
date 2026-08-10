@@ -23,6 +23,8 @@ export function createSync(
   deviceId: string,
   baseUrl: string | undefined,
   onAuthLost?: () => void,
+  /** Fired after pulled rows are written, so the caller can reload the store. */
+  onPulled?: () => void,
 ): SyncSetup | null {
   if (!baseUrl) return null;
   if (!tokenStore.getAccessToken()) return null;
@@ -33,7 +35,11 @@ export function createSync(
     tokens: tokenStore,
     ...(onAuthLost ? { onAuthLost } : {}),
   });
-  return { engine: new SyncEngine(db, transport, deviceId), transport, tokens: tokenStore };
+  return {
+    engine: new SyncEngine(db, transport, deviceId, onPulled ? { onPulled } : {}),
+    transport,
+    tokens: tokenStore,
+  };
 }
 
 export { SyncEngine } from './engine.js';

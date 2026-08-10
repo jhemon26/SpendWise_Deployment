@@ -72,6 +72,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [consentFlash, setConsentFlash] = useState(false);
   // Swapped in when the chooser will not open; see renderGoogleFallback.
   const [googleFallback, setGoogleFallback] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const googleSlot = useRef<HTMLDivElement | null>(null);
   const [dial, setDial] = useState('+44');
   const [local, setLocal] = useState('');
@@ -149,7 +150,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   async function startGoogle(): Promise<void> {
     if (!gate()) return;
     setError(null);
+    setGoogleBusy(true);
     const shown = await promptGoogle();
+    setGoogleBusy(false);
     if (!shown) {
       /*
        * The chooser was refused. Rather than telling the user to go and change
@@ -259,16 +262,21 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              {googleFallback
-                ? <div ref={googleSlot} style={{ display: 'flex', justifyContent: 'center', minHeight: 40 }} />
-                : (
-                  <Provider
-                    kind="google"
-                    ready={Boolean(GOOGLE_CLIENT_ID) && googleUp}
-                    onUnavailable={setSoon}
-                    onStart={() => { void startGoogle(); }}
-                  />
-                )}
+              {/* One slot, one height. The fallback swaps INSIDE it, so the row
+                  does not resize when Google's button takes over. */}
+              <div style={{ minHeight: 44, display: 'grid', alignItems: 'center' }}>
+                {googleFallback
+                  ? <div ref={googleSlot} style={{ display: 'flex', justifyContent: 'center' }} />
+                  : (
+                    <Provider
+                      kind="google"
+                      ready={Boolean(GOOGLE_CLIENT_ID) && googleUp}
+                      onUnavailable={setSoon}
+                      busy={googleBusy}
+                      onStart={() => { void startGoogle(); }}
+                    />
+                  )}
+              </div>
               <Provider
                 kind="apple"
                 ready={oidcAvailable}
@@ -418,11 +426,12 @@ function Spinner(): JSX.Element {
  * four-colour G on a light surface, so this one deliberately breaks the dark
  * palette — a recoloured G is a brand violation and reads as a phishing page.
  */
-function Provider({ kind, ready, onUnavailable, onStart }: {
+function Provider({ kind, ready, onUnavailable, onStart, busy = false }: {
   kind: 'google' | 'apple';
   ready: boolean;
   onUnavailable: (name: string) => void;
   onStart?: (() => void) | undefined;
+  busy?: boolean;
 }): JSX.Element {
   const name = kind === 'google' ? 'Google' : 'Apple';
   const style = kind === 'google' ? googleBtn : appleBtn;
@@ -436,7 +445,7 @@ function Provider({ kind, ready, onUnavailable, onStart }: {
       <span style={{ position: 'absolute', left: 12, display: 'grid', placeItems: 'center' }}>
         {kind === 'google' ? <GoogleMark /> : <AppleMark />}
       </span>
-      <span>Continue with {name}</span>
+      <span>{busy ? 'Opening…' : `Continue with ${name}`}</span>
     </button>
   );
 }

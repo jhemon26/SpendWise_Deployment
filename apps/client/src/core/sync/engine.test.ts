@@ -271,3 +271,50 @@ describe('runOnce settles even when the server fails', () => {
     await expect(engine.runOnce()).resolves.toBeUndefined();
   });
 });
+
+describe('onPulled', () => {
+  const row = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    local_id: 'c-1', server_id: 'c-1', created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
+    deleted_at: null, sync_status: 'synced', version: 1, device_id: 'server',
+    name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
+    is_fixed: false, due_day: null, ...over,
+  });
+
+  it('fires when rows are written, so the caller can reload its own copy', async () => {
+    // The engine writes to the database; the store is a separate in-memory
+    // copy. Without this signal they diverge and pulled data stays invisible
+    // until a reload — which made a set-up account look empty and get offered
+    // setup a second time.
+    let pulled = 0;
+    const e = new SyncEngine(db, transport, 'd1', { onPulled: () => { pulled++; } });
+    transport.pull = async () => ({
+      transactions: [], categories: [row()], banks: [],
+      next_cursor: null, has_more: false, server_time: NOW.toISOString(),
+    });
+    await e.runOnce();
+    expect(pulled).toBe(1);
+  });
+
+  it('does not fire when the server sends nothing', async () => {
+    // A no-op cycle must not churn the store; this runs every 60 seconds.
+    let pulled = 0;
+    const e = new SyncEngine(db, transport, 'd1', { onPulled: () => { pulled++; } });
+    transport.pull = async () => ({
+      transactions: [], categories: [], banks: [],
+      next_cursor: null, has_more: false, server_time: NOW.toISOString(),
+    });
+    await e.runOnce();
+    expect(pulled).toBe(0);
+  });
+
+  it('fires for transactions too, not only categories', async () => {
+    let pulled = 0;
+    const e = new SyncEngine(db, transport, 'd1', { onPulled: () => { pulled++; } });
+    transport.pull = async () => ({
+      transactions: [tx()], categories: [], banks: [],
+      next_cursor: null, has_more: false, server_time: NOW.toISOString(),
+    });
+    await e.runOnce();
+    expect(pulled).toBe(1);
+  });
+});

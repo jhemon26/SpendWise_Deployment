@@ -270,17 +270,35 @@ export function App(): JSX.Element {
   }
 
   function startSync(): void {
-    const setup = createSync(db, DEVICE_ID, API_BASE || undefined, () => {
-      // Refresh failed for good — reuse detection may have killed the family.
-      setSignedIn(false);
-      engine?.stop();
-      engine = null;
-    });
+    const setup = createSync(
+      db,
+      DEVICE_ID,
+      API_BASE || undefined,
+      () => {
+        // Refresh failed for good — reuse detection may have killed the family.
+        setSignedIn(false);
+        engine?.stop();
+        engine = null;
+      },
+      /*
+       * Reload the store whenever the server sends rows.
+       *
+       * The engine writes to the database; the store is a separate in-memory
+       * copy loaded at boot. Without this they diverge: pulled data sits in
+       * IndexedDB unseen until a reload — which is why a set-up account looked
+       * empty, was offered setup again, and then "came back" on refresh.
+       */
+      () => { void state.hydrate(db); },
+    );
     if (setup) {
       engine = setup.engine;
       engine.start();
-      // Primed either way: a failed pull must not leave the app stuck deciding.
-      void engine.runOnce().finally(() => setSyncPrimed(true));
+      // Hydrate before priming, so the onboarding decision below is made
+      // against the data that was just pulled rather than an empty store.
+      void engine.runOnce()
+        .then(() => state.hydrate(db))
+        .catch(() => undefined)
+        .finally(() => setSyncPrimed(true));
     } else {
       setSyncPrimed(true);
     }

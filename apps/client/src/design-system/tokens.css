@@ -10,23 +10,24 @@
 :root {
   /* Surfaces.
 
-     Deep navy, not near-black. The background was #06070a — effectively pure
-     black — while every surface above it is blue-slate. That gap is why the
-     cards read as pale boxes floating on a void instead of panels raised off a
-     material, and why the app felt darker and flatter than its own components.
+     Plum, warming towards pink as it lifts. The original #06070a was
+     effectively pure black while every surface above it carried a hue, which is
+     why the cards read as pale boxes on a void rather than panels raised off a
+     material.
 
-     The steps are now even (roughly +6 lightness each), so elevation is legible
-     without borders doing all the work, and the whole stack shares one hue.
-     Charcoal-navy is also what Monzo, N26 and Revolut use in dark mode. */
-  --bg: #0a0e1a;
-  --surface: #141a2b;
-  --surface-2: #1c2338;
-  --surface-3: #263049;
+     The steps are even (roughly +6 lightness each) so elevation is legible
+     without borders carrying it alone, and the whole stack shares one hue —
+     which here is the brand's own, so indigo and the pink in the avatars sit in
+     the same family rather than against it. */
+  --bg: #120e1b;
+  --surface: #1d1730;
+  --surface-2: #271f3d;
+  --surface-3: #342a4e;
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
   --line-brand: rgba(99, 102, 241, 0.32);
 
-  --hero-bg: linear-gradient(145deg, #232c4a 0%, #151b2d 100%);
+  --hero-bg: linear-gradient(145deg, #362a58 0%, #1e1833 100%);
   --brand-cyan: #06b6d4;
   --brand-purple: #a855f7;
 
@@ -63,7 +64,7 @@
   --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
 
   --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
-  --page-bg: radial-gradient(120% 80% at 50% -10%, #232c4a 0%, #141a2b 40%, #0a0e1a 78%);
+  --page-bg: radial-gradient(120% 80% at 50% -10%, #3a2c60 0%, #1d1730 40%, #120e1b 78%);
 }
 
 

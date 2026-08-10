@@ -46,6 +46,25 @@ const money = (minor: number, cur: string): string => formatMoney(minor, cur);
 /** Whole pounds, for figures where pence are noise (budgets, bills, totals). */
 const money0 = (minor: number, cur: string): string =>
   formatMoney(minor, cur, 'en-GB').replace(/[.,]\d{2}$/, '');
+/**
+ * Piggy bank for the saving goal.
+ *
+ * Drawn without a background disc, unlike the verdict marks: those sit alone on
+ * the card, this one sits inside a stat cell where a filled circle would read as
+ * a badge competing with the number beside it.
+ */
+const PIGGY = `<circle cx="11.5" cy="4.2" r="3.1" fill="#FACC15"/>
+  <circle cx="11.5" cy="4.2" r="1.5" fill="#EAB308"/>
+  <path d="M6.4 8.6 5.2 4.9l3.9 2.2z" fill="#EC4899"/>
+  <ellipse cx="11.3" cy="13.4" rx="8.1" ry="6.1" fill="#F472B6"/>
+  <rect x="6.6" y="18.2" width="2.6" height="3" rx="1.2" fill="#EC4899"/>
+  <rect x="13.4" y="18.2" width="2.6" height="3" rx="1.2" fill="#EC4899"/>
+  <ellipse cx="19.1" cy="13.2" rx="2.7" ry="2.2" fill="#EC4899"/>
+  <circle cx="18.3" cy="13.2" r=".55" fill="#831843"/>
+  <circle cx="19.9" cy="13.2" r=".55" fill="#831843"/>
+  <circle cx="14.2" cy="11.5" r="1.15" fill="#4A044E"/>
+  <rect x="8.6" y="9.4" width="5.4" height="1.5" rx=".75" fill="#BE185D"/>`;
+
 const monthName = (now: Date): string => now.toLocaleDateString('en-GB', { month: 'long' });
 const monthShort = (now: Date): string => now.toLocaleDateString('en-GB', { month: 'short' });
 /** Use for anything that shows a +/− sign. See formatSignedMoney. */
@@ -140,12 +159,21 @@ export function Home({
             display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
             marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
           }}>
-            {([['Budget', money0(dayToDayMinor, currency)],
-               ['Spent', money(d.flexSpentMinor, currency)],
-               ['Saving goal', savingsTargetMinor > 0 ? money0(savingsTargetMinor, currency) : '—']] as const).map(([k, v]) => (
+            {([['Budget', money0(dayToDayMinor, currency), false],
+               ['Spent', money(d.flexSpentMinor, currency), false],
+               ['Saving goal', savingsTargetMinor > 0 ? money0(savingsTargetMinor, currency) : '—', true]] as const).map(([k, v, piggy]) => (
               <div key={k} style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>
-                <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, marginTop: 4 }}>{v}</p>
+                <p className="num" style={{
+                  fontSize: 'var(--fs-sm)', fontWeight: 800, marginTop: 4,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                }}>
+                  {piggy && (
+                    <svg viewBox="0 0 24 24" width={17} height={17} aria-hidden
+                         style={{ flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: PIGGY }} />
+                  )}
+                  {v}
+                </p>
               </div>
             ))}
           </div>

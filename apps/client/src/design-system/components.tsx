@@ -225,29 +225,21 @@ export function Avatar({ emoji, colour, name, size = 40 }: {
         />
       );
     }
-    // Unknown id (older build, hand-edited storage) — fall through to initials
-    // rather than rendering an empty circle.
+    // Unknown id — fall through to initials rather than an empty circle.
   }
 
   return (
     <span style={{
       width: size, height: size, borderRadius: 'var(--r-pill)', flexShrink: 0,
       display: 'grid', placeItems: 'center',
-      background: emoji ? colour : 'var(--surface)',
-      // Keep the gradient ring when there is no emoji, so the fallback still
-      // looks intentional rather than unstyled.
-      boxShadow: emoji ? 'none' : `0 0 0 2px ${colour}`,
+      background: 'var(--surface)',
+      // A ring so the initials fallback still looks deliberate.
+      boxShadow: `0 0 0 2px ${colour}`,
       fontSize: Math.round(size * 0.52), lineHeight: 1,
       color: '#fff', fontWeight: 800, letterSpacing: '-.02em',
     }}>
-      {emoji || initialsOf(name)}
+      {initialsOf(name)}
     </span>
   );
 }
 
-/** Chill, non-corporate, and legible at 20px. */
-export const AVATAR_EMOJI = [
-  '🐱', '🐶', '🦊', '🐼', '🐨', '🦁', '🐯', '🐸',
-  '🐧', '🦉', '🐢', '🐙', '🦄', '🐝', '🦋', '🐬',
-  '🦜', '🐰', '🌵', '🍀', '🌙', '⭐', '🔥', '🚀',
-];

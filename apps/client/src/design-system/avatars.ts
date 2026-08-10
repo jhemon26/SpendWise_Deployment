@@ -152,6 +152,86 @@ export const AVATARS: Record<string, string> = {
     <path d="M0 34q8-8 16 0t16 0 16 0 16 0v30H0z" fill="#22D3EE"/>
     <path d="M0 42q8-8 16 0t16 0 16 0 16 0v22H0z" fill="#67E8F9"/>
     <circle cx="44" cy="18" r="7" fill="#FDE68A"/>`,
+
+  koala: `<circle cx="32" cy="32" r="32" fill="#94A3B8"/>
+    <circle cx="13" cy="24" r="10" fill="#CBD5E1"/><circle cx="51" cy="24" r="10" fill="#CBD5E1"/>
+    <circle cx="13" cy="24" r="5" fill="#E2E8F0"/><circle cx="51" cy="24" r="5" fill="#E2E8F0"/>
+    <circle cx="32" cy="34" r="19" fill="#E2E8F0"/>
+    <circle cx="25" cy="31" r="3" fill="#1E293B"/><circle cx="39" cy="31" r="3" fill="#1E293B"/>
+    <ellipse cx="32" cy="41" rx="6" ry="7" fill="#475569"/>`,
+
+  tiger: `<circle cx="32" cy="32" r="32" fill="#FB923C"/>
+    <circle cx="15" cy="16" r="8" fill="#EA580C"/><circle cx="49" cy="16" r="8" fill="#EA580C"/>
+    <circle cx="32" cy="34" r="20" fill="#FDBA74"/>
+    <path d="M20 22 24 30M44 22 40 30M14 34h7M50 34h-7" stroke="#7C2D12" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="25" cy="32" r="3" fill="#1F2937"/><circle cx="39" cy="32" r="3" fill="#1F2937"/>
+    <path d="M32 40 28 44h8z" fill="#7C2D12"/>`,
+
+  monkey: `<circle cx="32" cy="32" r="32" fill="#A16207"/>
+    <circle cx="12" cy="30" r="9" fill="#D97706"/><circle cx="52" cy="30" r="9" fill="#D97706"/>
+    <circle cx="12" cy="30" r="4.5" fill="#FDE68A"/><circle cx="52" cy="30" r="4.5" fill="#FDE68A"/>
+    <circle cx="32" cy="32" r="19" fill="#D97706"/>
+    <ellipse cx="32" cy="38" rx="14" ry="12" fill="#FDE68A"/>
+    <circle cx="26" cy="30" r="3" fill="#1F2937"/><circle cx="38" cy="30" r="3" fill="#1F2937"/>
+    <path d="M26 41q6 5 12 0" stroke="#78350F" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+
+  elephant: `<circle cx="32" cy="32" r="32" fill="#64748B"/>
+    <circle cx="16" cy="30" r="12" fill="#94A3B8"/><circle cx="48" cy="30" r="12" fill="#94A3B8"/>
+    <rect x="20" y="16" width="24" height="26" rx="12" fill="#CBD5E1"/>
+    <path d="M28 40h8v10a4 4 0 0 1-8 0z" fill="#CBD5E1"/>
+    <circle cx="26" cy="28" r="2.8" fill="#1E293B"/><circle cx="38" cy="28" r="2.8" fill="#1E293B"/>`,
+
+  dino: `<circle cx="32" cy="32" r="32" fill="#22C55E"/>
+    <path d="M18 14 24 22 30 14 36 22 42 14v10H18z" fill="#15803D"/>
+    <path d="M32 20c11 0 19 8 19 18s-8 14-19 14-19-6-19-14 8-18 19-18z" fill="#4ADE80"/>
+    <circle cx="25" cy="32" r="3.2" fill="#052E16"/><circle cx="39" cy="32" r="3.2" fill="#052E16"/>
+    <path d="M24 42h16" stroke="#052E16" stroke-width="3" stroke-linecap="round"/>`,
+
+  shark: `<circle cx="32" cy="32" r="32" fill="#0EA5E9"/>
+    <path d="M32 10 42 30H22z" fill="#0369A1"/>
+    <path d="M10 40c8-8 36-8 44 0-6 9-38 9-44 0z" fill="#7DD3FC"/>
+    <path d="M14 42h36l-4 5H18z" fill="#F0F9FF"/>
+    <path d="M18 42l3 5M26 42l3 5M34 42l3 5M42 42l3 5" stroke="#0369A1" stroke-width="1.6"/>
+    <circle cx="24" cy="37" r="2.4" fill="#0C4A6E"/>`,
+
+  crab: `<circle cx="32" cy="32" r="32" fill="#F87171"/>
+    <ellipse cx="32" cy="36" rx="17" ry="12" fill="#DC2626"/>
+    <circle cx="12" cy="28" r="7" fill="#EF4444"/><circle cx="52" cy="28" r="7" fill="#EF4444"/>
+    <path d="M14 44l-5 6M22 48l-2 6M42 48l2 6M50 44l5 6" stroke="#DC2626" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="25" cy="24" r="4" fill="#FEE2E2"/><circle cx="39" cy="24" r="4" fill="#FEE2E2"/>
+    <circle cx="25" cy="24" r="2" fill="#1F2937"/><circle cx="39" cy="24" r="2" fill="#1F2937"/>`,
+
+  hedgehog: `<circle cx="32" cy="32" r="32" fill="#A16207"/>
+    <path d="M32 12 38 22l8-6-2 11 10-2-7 8 9 4-10 3 4 9-10-4-2 11-6-9-6 9-2-11-10 4 4-9-10-3 9-4-7-8 10 2-2-11 8 6z" fill="#78350F"/>
+    <circle cx="32" cy="36" r="12" fill="#FDE68A"/>
+    <circle cx="28" cy="34" r="2.4" fill="#1F2937"/><circle cx="36" cy="34" r="2.4" fill="#1F2937"/>
+    <circle cx="32" cy="41" r="2.6" fill="#1F2937"/>`,
+
+  unicorn: `<circle cx="32" cy="32" r="32" fill="#F0ABFC"/>
+    <path d="M32 4 37 20H27z" fill="#FACC15"/>
+    <path d="M32 16c11 0 19 9 19 19s-8 17-19 17-19-6-19-17 8-19 19-19z" fill="#FDF4FF"/>
+    <path d="M13 22c6-4 10-2 12 4-5 4-10 3-12-4z" fill="#A855F7"/>
+    <path d="M51 22c-6-4-10-2-12 4 5 4 10 3 12-4z" fill="#22D3EE"/>
+    <circle cx="26" cy="34" r="3" fill="#1F2937"/><circle cx="38" cy="34" r="3" fill="#1F2937"/>
+    <path d="M29 43q3 3 6 0" stroke="#C026D3" stroke-width="2.6" fill="none" stroke-linecap="round"/>`,
+
+  sun: `<circle cx="32" cy="32" r="32" fill="#0EA5E9"/>
+    <path d="M32 2v10M32 52v10M2 32h10M52 32h10M11 11l7 7M46 46l7 7M53 11l-7 7M18 46l-7 7" stroke="#FDE68A" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="32" cy="32" r="15" fill="#FACC15"/>
+    <circle cx="27" cy="29" r="2.4" fill="#92400E"/><circle cx="37" cy="29" r="2.4" fill="#92400E"/>
+    <path d="M27 37q5 4 10 0" stroke="#92400E" stroke-width="2.6" fill="none" stroke-linecap="round"/>`,
+
+  rainbow: `<circle cx="32" cy="32" r="32" fill="#1E293B"/>
+    <path d="M8 46a24 24 0 0 1 48 0h-6a18 18 0 0 0-36 0z" fill="#EF4444"/>
+    <path d="M14 46a18 18 0 0 1 36 0h-6a12 12 0 0 0-24 0z" fill="#FACC15"/>
+    <path d="M20 46a12 12 0 0 1 24 0h-6a6 6 0 0 0-12 0z" fill="#22C55E"/>
+    <circle cx="14" cy="48" r="6" fill="#F8FAFC"/><circle cx="50" cy="48" r="6" fill="#F8FAFC"/>`,
+
+  donut: `<circle cx="32" cy="32" r="32" fill="#FDE68A"/>
+    <circle cx="32" cy="32" r="22" fill="#C2410C"/>
+    <path d="M32 10a22 22 0 0 1 0 44 22 22 0 0 1 0-44z" fill="#F472B6"/>
+    <circle cx="32" cy="32" r="8" fill="#FDE68A"/>
+    <path d="M20 22l5 3M42 20l-3 5M46 36l-5 2M24 42l4 3M36 46l2-5" stroke="#FDF4FF" stroke-width="3" stroke-linecap="round"/>`,
 };
 
 export const AVATAR_KEYS = Object.keys(AVATARS);

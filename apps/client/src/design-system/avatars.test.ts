@@ -3,7 +3,7 @@ import { AVATARS, AVATAR_KEYS, SVG_PREFIX, isSvgAvatar, svgAvatarKey } from './a
 
 describe('illustrated avatars', () => {
   it('ships a usable number of them', () => {
-    expect(AVATAR_KEYS.length).toBeGreaterThanOrEqual(20);
+    expect(AVATAR_KEYS.length).toBeGreaterThanOrEqual(30);
   });
 
   it('every entry fills the full circle', () => {
@@ -41,7 +41,12 @@ describe('illustrated avatars', () => {
   it('round-trips the storage prefix', () => {
     expect(isSvgAvatar(`${SVG_PREFIX}cat`)).toBe(true);
     expect(svgAvatarKey(`${SVG_PREFIX}cat`)).toBe('cat');
-    expect(isSvgAvatar('🐱')).toBe(false);
     expect(isSvgAvatar('')).toBe(false);
+  });
+
+  it('every key is unique and lowercase', () => {
+    // The key is the stored value, so a duplicate would silently shadow one.
+    expect(new Set(AVATAR_KEYS).size).toBe(AVATAR_KEYS.length);
+    for (const k of AVATAR_KEYS) expect(k, k).toMatch(/^[a-z]+$/);
   });
 });

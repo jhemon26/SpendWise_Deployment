@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Bank, Category } from '@spendwise/shared-types';
 import { toMinor, fromMinor, formatMoney } from '@spendwise/shared-types';
 import { ICON_KEYS, ICONS } from '../../design-system/icons.js';
-import { AVATAR_EMOJI, Avatar } from '../../design-system/components.js';
-import { AVATAR_KEYS, SVG_PREFIX, isSvgAvatar } from '../../design-system/avatars.js';
+import { Avatar } from '../../design-system/components.js';
+import { AVATAR_KEYS, SVG_PREFIX } from '../../design-system/avatars.js';
 
 /**
  * The prototype's editing sheets, ported.
@@ -380,7 +380,6 @@ export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
         <Avatar emoji={pick} colour={tint} name={name} size={72} />
       </div>
 
-      <p style={label}>Characters</p>
       <div role="group" aria-label="Illustrated avatar" style={{
         display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 'var(--s2)',
         maxHeight: 220, overflowY: 'auto', padding: 2,
@@ -408,31 +407,9 @@ export function AvatarEditor({ emoji, colour, name, onSave, onClose }: {
         })}
       </div>
 
-      <p style={label}>Emoji</p>
-      <div role="group" aria-label="Emoji avatar" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 'var(--s2)',
-        maxHeight: 150, overflowY: 'auto', padding: 2,
-      }}>
-        {AVATAR_EMOJI.map((e) => (
-          <button
-            key={e}
-            type="button"
-            aria-pressed={pick === e}
-            aria-label={e}
-            onClick={() => setPick(e)}
-            style={{
-              aspectRatio: '1', borderRadius: 'var(--r-md)', cursor: 'pointer',
-              display: 'grid', placeItems: 'center', fontSize: 22, lineHeight: 1,
-              background: pick === e ? 'var(--brand-soft)' : 'var(--surface-2)',
-              border: `1.5px solid ${pick === e ? 'var(--line-brand)' : 'transparent'}`,
-            }}
-          >{e}</button>
-        ))}
-      </div>
-
-      {!isSvgAvatar(pick) && (
+      {!pick && (
         <>
-      <p style={label}>Background</p>
+      <p style={label}>Initials background</p>
       <div role="group" aria-label="Background colour" style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s2)' }}>
         {PALETTE.map((c) => (
           <button

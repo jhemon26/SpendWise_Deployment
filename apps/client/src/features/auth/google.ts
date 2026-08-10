@@ -117,6 +117,32 @@ export async function initGoogle(
 }
 
 /**
+ * Render Google's own button as a fallback.
+ *
+ * prompt() opens One Tap / FedCM, which browsers suppress freely — after a few
+ * dismissals, with third-party cookies off, and routinely on mobile. The
+ * rendered button uses a different path (a popup), so it commonly works when
+ * the prompt will not. It looks like Google's button rather than ours, which is
+ * a fair trade against a sign-in that cannot be completed at all.
+ */
+export async function renderGoogleFallback(parent: HTMLElement): Promise<void> {
+  const api = await loadGoogle();
+  const w = Math.round(parent.getBoundingClientRect().width);
+  parent.replaceChildren();
+  api.renderButton(parent, {
+    type: 'standard',
+    theme: 'outline',
+    // medium keeps the personalised two-line variant away, so the row stays
+    // the height it was designed for.
+    size: 'medium',
+    text: 'continue_with',
+    shape: 'rectangular',
+    logo_alignment: 'left',
+    width: Math.min(Math.max(w || 300, 200), 400),
+  });
+}
+
+/**
  * Open the chooser. Resolves false when the browser refused to show it —
  * usually because the user dismissed it too many times, which is a state only
  * they can clear, so the caller must say so rather than appear broken.

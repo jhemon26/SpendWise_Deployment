@@ -97,6 +97,24 @@ html {
   color-scheme: dark;
 }
 
+html {
+  /* Mobile browsers enlarge text they judge too small, per element, which is
+     why some things looked bigger than others for no reason. The app sets its
+     own sizes and does not want them second-guessed. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* No scrollbar anywhere. It appeared as a bar down the right edge on touch and
+   overlapped the content, and every scrolling surface here is obvious enough
+   without one. */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   min-height: 100dvh;
   background: var(--bg);

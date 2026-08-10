@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
-import { GOOGLE_CLIENT_ID, newNonce, initGoogle, promptGoogle } from './google.js';
+import { GOOGLE_CLIENT_ID, newNonce, initGoogle, promptGoogle, renderGoogleFallback } from './google.js';
 import { Logo } from '../../design-system/Logo.js';
 import { PrivacyScreen } from '../legal/PrivacyScreen.js';
 import { POLICY_VERSION } from '../legal/privacy.js';
@@ -70,6 +70,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   // Set when someone tries to proceed without ticking; the control turns red
   // rather than pushing a sentence into the error slot above it.
   const [consentFlash, setConsentFlash] = useState(false);
+  // Swapped in when the chooser will not open; see renderGoogleFallback.
+  const [googleFallback, setGoogleFallback] = useState(false);
+  const googleSlot = useRef<HTMLDivElement | null>(null);
   const [dial, setDial] = useState('+44');
   const [local, setLocal] = useState('');
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
@@ -148,11 +151,22 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     setError(null);
     const shown = await promptGoogle();
     if (!shown) {
-      // Chrome suppresses the chooser after repeated dismissals, and only the
-      // user can clear that. Saying so beats looking broken.
-      setError('Google could not open its sign-in window. Allow third-party sign-in for this site, or use your mobile number.');
+      /*
+       * The chooser was refused. Rather than telling the user to go and change
+       * a browser setting — which most will not do, and some cannot — swap in
+       * Google's own button, which signs in by a different route.
+       */
+      setGoogleFallback(true);
     }
   }
+
+  useEffect(() => {
+    if (!googleFallback) return;
+    const host = googleSlot.current;
+    if (!host) return;
+    void renderGoogleFallback(host).catch(() =>
+      setError('Google sign-in is unavailable on this browser. Use your mobile number.'));
+  }, [googleFallback]);
 
   const say = (err: unknown): void => {
     const c = (err as { code?: string }).code ?? '';
@@ -245,12 +259,16 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              <Provider
-                kind="google"
-                ready={Boolean(GOOGLE_CLIENT_ID) && googleUp}
-                onUnavailable={setSoon}
-                onStart={() => { void startGoogle(); }}
-              />
+              {googleFallback
+                ? <div ref={googleSlot} style={{ display: 'flex', justifyContent: 'center', minHeight: 40 }} />
+                : (
+                  <Provider
+                    kind="google"
+                    ready={Boolean(GOOGLE_CLIENT_ID) && googleUp}
+                    onUnavailable={setSoon}
+                    onStart={() => { void startGoogle(); }}
+                  />
+                )}
               <Provider
                 kind="apple"
                 ready={oidcAvailable}

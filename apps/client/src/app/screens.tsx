@@ -132,7 +132,7 @@ export function Home({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--s4)' }}>
             <div style={{ minWidth: 0 }}>
               <p className="num" data-testid="safe-to-spend" data-tour="safe-to-spend" style={{
-                fontSize: 'clamp(26px, 8.5vw, var(--fs-hero))', fontWeight: 800, letterSpacing: '-.035em',
+                fontSize: 'var(--fs-hero)', fontWeight: 800, letterSpacing: '-.035em',
                 lineHeight: 1.05, whiteSpace: 'nowrap', color: d.leftMinor < 0 ? 'var(--danger)' : undefined,
               }}>
                 {money(d.leftMinor, currency)}

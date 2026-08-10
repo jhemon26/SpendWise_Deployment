@@ -126,6 +126,11 @@ body {
   overscroll-behavior-y: none;
 }
 
+@keyframes bootbar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
+}
+
 .num {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;

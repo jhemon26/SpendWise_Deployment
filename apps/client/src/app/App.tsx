@@ -18,7 +18,7 @@ import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/sel
 import { seedDemo } from '../features/onboarding/demo.js';
 import { Home, Activity, Budgets, Insights, Profile, type ScreenData, type TxFilter } from './screens.js';
 import { Avatar, greetingFor } from '../design-system/components.js';
-import { Logo } from '../design-system/Logo.js';
+import { Logo, Splash } from '../design-system/Logo.js';
 
 type Tab = 'home' | 'activity' | 'budgets' | 'insights' | 'profile';
 
@@ -63,6 +63,18 @@ export function App(): JSX.Element {
    * then writes a duplicate set of categories when the user completes it.
    */
   const [syncPrimed, setSyncPrimed] = useState(false);
+  /*
+   * Hold the splash briefly.
+   *
+   * On a warm start the checks finish in tens of milliseconds, and a screen
+   * that appears and vanishes inside one frame reads as a glitch. A short floor
+   * makes it deliberate — which is the whole point of a launch screen.
+   */
+  const [minSplash, setMinSplash] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setMinSplash(false), 650);
+    return () => clearTimeout(t);
+  }, []);
   const [showTour, setShowTour] = useState(false);
   const [welcome, setWelcome] = useState(false);
   const [filter, setFilter] = useState<TxFilter>('all');
@@ -428,17 +440,10 @@ export function App(): JSX.Element {
      IS one. Falling through to the app while auth.restore() was still in
      flight flashed the home screen — including the previous user's name and
      avatar — on every refresh. */
-  if (API_BASE && !authChecked && !bootError) {
-    return (
-      <main style={{
-        minHeight: '100dvh', display: 'grid', placeItems: 'center',
-        // Same treatment as the sign-in screen, so the handover is invisible.
-        background: 'var(--page-bg)',
-      }}>
-        <Logo size={64} />
-      </main>
-    );
-  }
+  // Nothing from a signed-in session may render before we know whether there is
+  // one, and the splash also holds for its minimum so a warm start does not
+  // flash through it.
+  if (!bootError && (minSplash || (API_BASE && !authChecked))) return <Splash />;
 
   if (API_BASE && authChecked && !signedIn) {
     return (
@@ -460,15 +465,7 @@ export function App(): JSX.Element {
 
   // Wait for the account's data before deciding, or the check above never gets
   // the chance to run.
-  if (API_BASE && signedIn && !syncPrimed && !onboarded) {
-    return (
-      <main style={{
-        minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--page-bg)',
-      }}>
-        <Logo size={64} />
-      </main>
-    );
-  }
+  if (API_BASE && signedIn && !syncPrimed && !onboarded) return <Splash />;
 
   if (state.ready && !onboarded) {
     return (

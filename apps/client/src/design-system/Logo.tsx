@@ -41,3 +41,34 @@ export function Logo({ size = 88, rounded = true }: { size?: number; rounded?: b
     </svg>
   );
 }
+
+/**
+ * The boot screen.
+ *
+ * Deliberately identical to the markup in index.html, which paints before any
+ * JavaScript runs. When React mounts and replaces it, nothing moves — the two
+ * read as one screen rather than a flash followed by a different screen.
+ */
+export function Splash(): JSX.Element {
+  return (
+    <main style={{
+      minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--bg)',
+    }}>
+      <div style={{ display: 'grid', justifyItems: 'center', gap: 18 }}>
+        <Logo size={88} />
+        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.03em', color: 'var(--text)' }}>
+          SpendWise
+        </div>
+        <div style={{
+          width: 120, height: 3, borderRadius: 2, overflow: 'hidden',
+          background: 'rgba(255,255,255,.10)',
+        }}>
+          <div style={{
+            width: '40%', height: '100%', borderRadius: 2, background: 'var(--brand)',
+            animation: 'bootbar 1.1s ease-in-out infinite',
+          }} />
+        </div>
+      </div>
+    </main>
+  );
+}

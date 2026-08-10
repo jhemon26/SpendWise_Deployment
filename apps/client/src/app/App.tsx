@@ -318,7 +318,6 @@ export function App(): JSX.Element {
     },
     onEditCategory: (c) => setCatEdit(c),
     onEditBank: (b) => setBankEdit(b),
-    onAddCategory: () => setCatEdit(null),
     onEditAvatar: () => setAvatarOpen(true),
     ...(API_BASE && signedIn ? { onDeleteAccount: () => setDeleteOpen(true) } : {}),
     monthlyIncomeMinor: state.monthlyIncomeMinor,

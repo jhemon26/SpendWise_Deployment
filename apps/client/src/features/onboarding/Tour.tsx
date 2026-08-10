@@ -21,7 +21,7 @@ export const DEFAULT_STEPS: TourStep[] = [
   {
     target: 'safe-to-spend',
     title: 'Available to spend',
-    body: 'What’s left after bills, divided by the days remaining.',
+    body: 'Your spending budget, less what you have spent so far. Bills are counted separately, so this is money you can actually use.',
   },
   {
     target: 'gauge',

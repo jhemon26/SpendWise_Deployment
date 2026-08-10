@@ -27,7 +27,6 @@ export interface ScreenData {
   /** Activity filter, lifted so the tab header can show the count. */
   filter?: TxFilter | undefined;
   onFilter?: ((f: TxFilter) => void) | undefined;
-  onAddCategory?: (() => void) | undefined;
   /** Open the single-value editor for one of the month settings. */
   onEditSetting?: ((which: 'budget' | 'savings' | 'name' | 'income') => void) | undefined;
   /** null opens the editor empty, for a new one. */
@@ -459,7 +458,7 @@ export function Activity({
 /* ── Budgets ──────────────────────────────────────────────────────────── */
 
 export function Budgets({
-  categories, transactions, d, currency, dayToDayMinor, now, onAddCategory,
+  categories, transactions, d, currency, dayToDayMinor, now,
 }: ScreenData): JSX.Element {
   const flex = categories.filter((c) => !c.is_fixed && !c.deleted_at);
   const total = statusOf(d.spentPct);
@@ -487,16 +486,7 @@ export function Budgets({
       </Card>
 
       <Card>
-        <CardHead
-          title="Day-to-day"
-          action={onAddCategory && (
-            <CardAction onClick={onAddCategory}>
-              <svg viewBox="0 0 24 24" width={14} height={14} stroke="currentColor" strokeWidth={2.4}
-                   fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-              New
-            </CardAction>
-          )}
-        />
+        <CardHead title="Day-to-day" />
         {flex.length === 0
           ? <Empty icon="other" title="No categories yet" body="Add one to start tracking day-to-day spending." />
           : flex.map((c, i) => {
@@ -707,7 +697,7 @@ export function Profile({
       <Card>
         <CardHead title="Your money" />
         <SettingRow
-          icon={<SettingIcon bg="var(--brand-purple)" path="M12 3v18M8 7h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6" />}
+          icon={<SettingGlyph bg="var(--brand-purple)" text={currencySymbol(currency)} />}
           name="Monthly income"
           sub={monthlyIncomeMinor > 0 ? 'Take-home pay, after tax' : 'Not set'}
           value={monthlyIncomeMinor > 0 ? money0(monthlyIncomeMinor, currency) : '—'}
@@ -871,6 +861,22 @@ function PlusGlyph(): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width={14} height={14} stroke="currentColor" strokeWidth={2.4}
          fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+  );
+}
+
+/** The symbol Intl uses for this currency — £, $, €, JP¥ — never a hardcoded one. */
+function currencySymbol(code: string): string {
+  return formatMoney(0, code, 'en-GB').replace(/[\d.,\s]/g, '') || code;
+}
+
+/** A settings icon whose content is text rather than a path. */
+function SettingGlyph({ bg, text }: { bg: string; text: string }): JSX.Element {
+  return (
+    <span aria-hidden style={{
+      width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center',
+      flexShrink: 0, color: '#fff', background: bg,
+      fontSize: text.length > 1 ? 11 : 15, fontWeight: 800, letterSpacing: '-.02em',
+    }}>{text}</span>
   );
 }
 

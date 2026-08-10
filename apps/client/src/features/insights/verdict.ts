@@ -112,23 +112,46 @@ function ordinal(n: number): string {
   return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th')}`;
 }
 
-/** Flat multi-colour marks, 20px. Same rules as the avatars: no gradients. */
+/**
+ * Flat multi-colour marks, drawn at 20px.
+ *
+ * Each one says the verdict on its own, so the icon is not decoration next to
+ * the words — money flying away for overspending, a car for the Porsche line.
+ * Same rules as the avatars: no gradients, no hairlines, nothing that turns to
+ * mush at this size.
+ */
 export const VERDICT_ICON: Record<VerdictTone, string> = {
-  great: `<circle cx="12" cy="12" r="11" fill="#FACC15"/>
-    <path d="M4.5 14.5h15l-1.6-4.2a2 2 0 0 0-1.9-1.3H8a2 2 0 0 0-1.9 1.3z" fill="#EF4444"/>
-    <rect x="3.5" y="14" width="17" height="3.4" rx="1.7" fill="#F8FAFC"/>
-    <circle cx="7.5" cy="18" r="2.1" fill="#1F2937"/><circle cx="16.5" cy="18" r="2.1" fill="#1F2937"/>`,
-  good: `<circle cx="12" cy="12" r="11" fill="#10B981"/>
-    <path d="M12 6.5c3.2 0 5.5 2.2 5.5 4.8 0 3.2-3.4 5.6-5.5 7-2.1-1.4-5.5-3.8-5.5-7C6.5 8.7 8.8 6.5 12 6.5z" fill="#D1FAE5"/>
-    <path d="M9.5 11.8 11.4 13.7 15 10" stroke="#047857" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
-  steady: `<circle cx="12" cy="12" r="11" fill="#06B6D4"/>
-    <circle cx="12" cy="12" r="7" fill="#ECFEFF"/>
-    <path d="M12 8.2v4l2.6 1.6" stroke="#0E7490" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
-  warn: `<circle cx="12" cy="12" r="11" fill="#F59E0B"/>
-    <path d="M12 5.6 20 19H4z" fill="#FEF3C7"/>
-    <path d="M12 10v3.4" stroke="#B45309" stroke-width="2.2" stroke-linecap="round"/>
-    <circle cx="12" cy="16.4" r="1.2" fill="#B45309"/>`,
-  bad: `<circle cx="12" cy="12" r="11" fill="#EF4444"/>
-    <path d="M12 4.5c1.6 3 .3 4.4-.6 5.6-1 1.3-2.4 2.6-2.4 4.7a3.9 3.9 0 0 0 7.8.2c0-1.5-.6-2.6-1.2-3.6-.5 1-1.2 1.5-2 1.5 1.2-2.6.5-5.6-1.6-8.4z" fill="#FDE68A"/>
-    <path d="M12 13.2c.9 1.2 1.4 2 1.4 2.9a1.4 1.4 0 0 1-2.8 0c0-.9.5-1.7 1.4-2.9z" fill="#FFF7ED"/>`,
+  // Sports car — the payoff the copy promises.
+  great: `<path d="M2 15.4c0-.9.6-1.7 1.5-1.9l1.4-.3 1.9-3.3A3.1 3.1 0 0 1 9.5 8.3h5c1.1 0 2.1.6 2.7 1.5l1.9 3.3 1.4.3c.9.2 1.5 1 1.5 1.9v1.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" fill="#EF4444"/>
+    <path d="M7.3 12.9 8.6 10.6c.3-.5.8-.8 1.3-.8h4.2c.5 0 1 .3 1.3.8l1.3 2.3z" fill="#BFDBFE"/>
+    <circle cx="7" cy="17.4" r="2.6" fill="#1F2937"/><circle cx="7" cy="17.4" r="1.1" fill="#D1D5DB"/>
+    <circle cx="17" cy="17.4" r="2.6" fill="#1F2937"/><circle cx="17" cy="17.4" r="1.1" fill="#D1D5DB"/>`,
+
+  // Piggy bank with a coin going in.
+  good: `<circle cx="15.6" cy="4.2" r="2.6" fill="#FACC15"/>
+    <path d="M20.5 13c0 3.3-3.4 5.6-7.6 5.6-.9 0-1.8-.1-2.6-.3l-3 1.6.6-3C5.6 15.8 4.5 14.5 4.5 13c0-3.3 3.4-5.9 8-5.9s8 2.6 8 5.9z" fill="#F472B6"/>
+    <ellipse cx="18.4" cy="13.2" rx="2.1" ry="1.7" fill="#EC4899"/>
+    <circle cx="17.8" cy="13.2" r=".45" fill="#831843"/><circle cx="19.1" cy="13.2" r=".45" fill="#831843"/>
+    <circle cx="10.6" cy="11.8" r="1.15" fill="#1F2937"/>
+    <path d="M8.4 8.2 7.2 5.9l3 1.1z" fill="#EC4899"/>`,
+
+  // Target, dead centre.
+  steady: `<circle cx="12" cy="12" r="9.6" fill="#06B6D4"/>
+    <circle cx="12" cy="12" r="6.4" fill="#ECFEFF"/>
+    <circle cx="12" cy="12" r="3.3" fill="#06B6D4"/>
+    <circle cx="12" cy="12" r="1.3" fill="#F8FAFC"/>`,
+
+  // Speedometer with the needle well past the middle.
+  warn: `<circle cx="12" cy="12" r="9.6" fill="#F59E0B"/>
+    <path d="M5.4 14.6a6.9 6.9 0 0 1 13.2 0" stroke="#FEF3C7" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <path d="M12 12.8 16.6 9.4" stroke="#7C2D12" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="12" cy="12.8" r="1.7" fill="#7C2D12"/>`,
+
+  // Banknote with wings: the money is leaving.
+  bad: `<path d="M1.6 9.4 5.6 6.2c.5 2.4-.6 3.9-4 3.2z" fill="#E0F2FE"/>
+    <path d="M22.4 9.4 18.4 6.2c-.5 2.4.6 3.9 4 3.2z" fill="#E0F2FE"/>
+    <rect x="5" y="8.6" width="14" height="9" rx="1.6" fill="#10B981"/>
+    <rect x="7" y="10.6" width="10" height="5" rx="1" fill="#A7F3D0"/>
+    <circle cx="12" cy="13.1" r="2" fill="#047857"/>
+    <path d="M12 11.7v2.8M11 12.4h2M11 13.8h2" stroke="#ECFDF5" stroke-width=".9" stroke-linecap="round"/>`,
 };

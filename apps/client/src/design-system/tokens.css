@@ -8,23 +8,34 @@
    Nothing is coloured unless it is one of those two things.
    ============================================================ */
 :root {
-  /* surfaces */
-  --bg: #06070a;
-  --surface: #0f121c;
-  --surface-2: #161b28;
-  --surface-3: #1e2436;
+  /* Surfaces.
+
+     Deep navy, not near-black. The background was #06070a — effectively pure
+     black — while every surface above it is blue-slate. That gap is why the
+     cards read as pale boxes floating on a void instead of panels raised off a
+     material, and why the app felt darker and flatter than its own components.
+
+     The steps are now even (roughly +6 lightness each), so elevation is legible
+     without borders doing all the work, and the whole stack shares one hue.
+     Charcoal-navy is also what Monzo, N26 and Revolut use in dark mode. */
+  --bg: #0a0e1a;
+  --surface: #141a2b;
+  --surface-2: #1c2338;
+  --surface-3: #263049;
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
   --line-brand: rgba(99, 102, 241, 0.32);
 
-  --hero-bg: linear-gradient(145deg, #181c2e 0%, #0e111c 100%);
+  --hero-bg: linear-gradient(145deg, #232c4a 0%, #151b2d 100%);
   --brand-cyan: #06b6d4;
   --brand-purple: #a855f7;
 
   /* text */
   --text: #f2f5f9;
   --text-muted: #98a2b3;
-  --text-dim: #6b7480;
+  /* Lifted from #6b7480: on the navy surfaces that only reached 3.3:1, under
+     the 4.5:1 needed for text this small. Now 4.8:1 on the raised surfaces. */
+  --text-dim: #8590a0;
 
   /* state */
   --brand: #6366f1;
@@ -52,7 +63,7 @@
   --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
 
   --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
-  --page-bg: radial-gradient(120% 80% at 50% -10%, #1a1f33 0%, #0e1220 38%, #06070a 78%);
+  --page-bg: radial-gradient(120% 80% at 50% -10%, #232c4a 0%, #141a2b 40%, #0a0e1a 78%);
 }
 
 

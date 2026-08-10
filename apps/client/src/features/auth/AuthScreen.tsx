@@ -3,6 +3,8 @@ import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
 import { GOOGLE_CLIENT_ID, newNonce, initGoogle, promptGoogle } from './google.js';
 import { Logo } from '../../design-system/Logo.js';
+import { PrivacyScreen } from '../legal/PrivacyScreen.js';
+import { POLICY_VERSION } from '../legal/privacy.js';
 
 /**
  * Sign-in (ARCHITECTURE §9.1).
@@ -54,6 +56,17 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   // Shown, not hidden: this is the shipping layout. Tapping an unconfigured
   // provider says so plainly rather than failing silently or faking success.
   const [soon, setSoon] = useState<string | null>(null);
+  const [showPolicy, setShowPolicy] = useState(false);
+  /*
+   * Unticked by default, and it stays unticked.
+   *
+   * UK GDPR requires a clear affirmative act — a pre-ticked box, or inferring
+   * agreement from someone simply continuing, is not valid. It also has to be
+   * as easy to refuse as to accept, which is why nothing here nags and the
+   * screen is perfectly usable while it is off; the sign-in buttons just do not
+   * fire.
+   */
+  const [accepted, setAccepted] = useState(false);
   const [dial, setDial] = useState('+44');
   const [local, setLocal] = useState('');
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
@@ -88,7 +101,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     void initGoogle(nonce.current, (idToken: string) => {
       setBusy(true); setError(null);
       auth.oidcCallback('google', idToken, nonce.current)
-        .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
+        .then((user) => { recordConsent(); onSignedIn(user.isNewAccount, user.accessToken); })
         .catch((e: unknown) => {
           const code = (e as { code?: string }).code ?? 'unknown';
           setError(`${FRIENDLY[code] ?? 'Google sign-in failed.'} (${code})`);
@@ -98,7 +111,37 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Record what was agreed to, and when.
+   *
+   * GDPR puts the burden of proof on us: "they ticked a box" is worth nothing
+   * without evidence of which text, at what time. Stored against the policy
+   * version so a material change can require fresh agreement rather than
+   * resting on consent to a document that no longer exists.
+   *
+   * Written only once sign-in has actually succeeded — recording agreement for
+   * an attempt that failed would overstate what happened.
+   */
+  function recordConsent(): void {
+    try {
+      localStorage.setItem('sw.privacy', JSON.stringify({
+        version: POLICY_VERSION,
+        acceptedAt: new Date().toISOString(),
+      }));
+    } catch {
+      // Private mode: the acceptance still happened, we just cannot evidence it.
+    }
+  }
+
+  /** True when the user may proceed; otherwise says why, once. */
+  function gate(): boolean {
+    if (accepted) return true;
+    setError('Please accept the privacy notice to continue.');
+    return false;
+  }
+
   async function startGoogle(): Promise<void> {
+    if (!gate()) return;
     setError(null);
     const shown = await promptGoogle();
     if (!shown) {
@@ -114,6 +157,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   };
 
   async function send(): Promise<void> {
+    if (!gate()) return;
     setBusy(true); setError(null);
     try {
       const { challengeId: id } = await auth.sendOtp(normalizePhoneE164(phone));
@@ -130,6 +174,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     setBusy(true); setError(null);
     try {
       const user = await auth.verifyOtp(challengeId, full);
+      recordConsent();
       onSignedIn(user.isNewAccount, user.accessToken);
     } catch (err) {
       say(err);
@@ -162,6 +207,8 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     if (e.key === 'ArrowLeft' && i > 0) boxes.current[i - 1]?.focus();
     if (e.key === 'ArrowRight' && i < 5) boxes.current[i + 1]?.focus();
   }
+
+  if (showPolicy) return <PrivacyScreen onBack={() => setShowPolicy(false)} />;
 
   return (
     <main style={page}>
@@ -201,14 +248,18 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                 onUnavailable={setSoon}
                 onStart={() => { void startGoogle(); }}
               />
-              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
+              <Provider
+                kind="apple"
+                ready={oidcAvailable}
+                onUnavailable={(n) => { if (gate()) setSoon(n); }}
+              />
               {soon && (
                 <p role="status" style={soonNote}>
                   {soon} sign-in is coming soon. Use your mobile number for now.
                 </p>
               )}
               <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
-              <button type="button" onClick={() => setStage('phone')} style={secondaryDark}>
+              <button type="button" onClick={() => { if (gate()) setStage('phone'); }} style={secondaryDark}>
                 Continue with mobile number
               </button>
             </div>
@@ -291,6 +342,21 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             </div>
           )}
         </div>
+
+        <label style={consentRow}>
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(e) => { setAccepted(e.target.checked); if (e.target.checked) setError(null); }}
+            style={consentBox}
+          />
+          <span>
+            I have read and agree to the{' '}
+            <button type="button" onClick={() => setShowPolicy(true)} style={policyLink}>
+              privacy notice
+            </button>.
+          </span>
+        </label>
 
         <p style={microcopy}>
           <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden stroke="currentColor" strokeWidth={2}
@@ -528,6 +594,23 @@ const soonNote: React.CSSProperties = {
   lineHeight: 1.45,
 };
 
+
+const consentRow: React.CSSProperties = {
+  display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+  fontSize: 'var(--fs-xs)', lineHeight: 1.5, color: 'var(--text-muted)',
+  textAlign: 'left',
+};
+
+const consentBox: React.CSSProperties = {
+  width: 18, height: 18, flexShrink: 0, marginTop: 1,
+  accentColor: 'var(--brand)', cursor: 'pointer',
+};
+
+const policyLink: React.CSSProperties = {
+  background: 'none', border: 0, padding: 0, cursor: 'pointer',
+  font: 'inherit', color: 'var(--brand)', fontWeight: 700,
+  textDecoration: 'underline', textUnderlineOffset: 2,
+};
 
 const legal: React.CSSProperties = {
   fontSize: 11, color: 'var(--text-dim)', textAlign: 'center',

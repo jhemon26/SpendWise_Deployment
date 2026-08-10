@@ -182,7 +182,7 @@ export function AddSheet({
                   background: isFixedSpend ? 'var(--text-dim)' : 'var(--brand-cyan)',
                 }} />
                 {isFixedSpend
-                  ? 'Counts as a bill — does not change what is safe to spend'
+                  ? 'Counts as a bill — does not change what is available to spend'
                   : 'Counts against your day-to-day budget'}
               </p>
             )}

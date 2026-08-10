@@ -96,7 +96,7 @@ export function Home({
               <svg viewBox="0 0 24 24" aria-hidden width={14} height={14} fill="var(--brand-cyan)">
                 <path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z" />
               </svg>
-              Safe to spend
+              Available to spend
             </p>
             <Chip tone={over ? 'warn' : 'ok'}>{over ? 'Spending fast' : 'On track'}</Chip>
           </div>

@@ -20,7 +20,7 @@ export interface TourStep {
 export const DEFAULT_STEPS: TourStep[] = [
   {
     target: 'safe-to-spend',
-    title: 'Your number for today',
+    title: 'Available to spend',
     body: 'What’s left after bills, divided by the days remaining.',
   },
   {

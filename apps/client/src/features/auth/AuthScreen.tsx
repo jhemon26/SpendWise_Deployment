@@ -177,7 +177,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
               : stage === 'phone' ? 'We’ll text you a code.'
-                : 'Know exactly what’s safe to spend today.'}
+                : 'Know exactly what you have available to spend.'}
           </p>
         </header>
 

@@ -721,21 +721,6 @@ export function Profile({
         </div>
       </Card>
 
-      {identities.length > 0 && (
-        <Card>
-          <CardHead title="Signed in as" />
-          {identities.map((i, n) => (
-            <SettingRow
-              key={`${i.provider}-${labelFor(i)}`}
-              divider={n > 0}
-              icon={<SettingGlyph bg="var(--surface-3)" text={(PROVIDER_NAME[i.provider] ?? '?').slice(0, 1)} />}
-              name={labelFor(i)}
-              sub={PROVIDER_NAME[i.provider] ?? i.provider}
-            />
-          ))}
-        </Card>
-      )}
-
       <Card>
         <CardHead title="Your money" />
         <SettingRow
@@ -810,41 +795,57 @@ export function Profile({
         })}
       </Section>
 
-      {onSignOut && (
+      {(onSignOut || onDeleteAccount || identities.length > 0) && (
         <Card>
-          <button
-            type="button"
-            onClick={onSignOut}
-            style={{
-              width: '100%', minHeight: 48, border: 0, borderRadius: 'var(--r-md)', cursor: 'pointer',
-              background: 'var(--danger-soft)', color: 'var(--danger)',
-              fontSize: 'var(--fs-sm)', fontWeight: 700,
-            }}
-          >
-            Sign out
-          </button>
+          <CardHead title="Account" />
+
+          {identities.map((i, n) => (
+            <SettingRow
+              key={`${i.provider}-${labelFor(i)}`}
+              divider={n > 0}
+              icon={<SettingGlyph bg="var(--surface-3)" text={(PROVIDER_NAME[i.provider] ?? '?').slice(0, 1)} />}
+              name={labelFor(i)}
+              sub={`Signed in with ${PROVIDER_NAME[i.provider] ?? i.provider}`}
+            />
+          ))}
+
+          {onSignOut && (
+            <SettingRow
+              divider={identities.length > 0}
+              icon={<SettingIcon bg="var(--surface-3)" path="M15 12H4m7-4-4 4 4 4M14 5h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-4" />}
+              name="Sign out"
+              sub="Your data stays on this device"
+              onClick={onSignOut}
+            />
+          )}
+
+          {onDeleteAccount && (
+            <>
+              <div style={{ height: 1, background: 'var(--line)' }} />
+              <button
+                type="button"
+                onClick={onDeleteAccount}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 'var(--s3)', width: '100%',
+                  textAlign: 'left', padding: 'var(--s3) 0', background: 'none', border: 0,
+                  cursor: 'pointer', color: 'inherit',
+                }}
+              >
+                <SettingIcon bg="var(--danger-soft)" path="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12" />
+                <span style={{ display: 'block', flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--danger)' }}>
+                    Delete account
+                  </span>
+                  <span style={{ display: 'block', fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>
+                    Permanent, and cannot be undone
+                  </span>
+                </span>
+              </button>
+            </>
+          )}
         </Card>
       )}
 
-      {onDeleteAccount && (
-        <Card style={{ borderColor: 'var(--danger-soft)' }}>
-          <CardHead title="Danger zone" />
-          <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s3)' }}>
-            Permanently delete your account and everything in it.
-          </p>
-          <button
-            type="button"
-            onClick={onDeleteAccount}
-            style={{
-              width: '100%', minHeight: 48, borderRadius: 'var(--r-md)', cursor: 'pointer',
-              background: 'transparent', border: '1px solid var(--danger)',
-              color: 'var(--danger)', fontSize: 'var(--fs-sm)', fontWeight: 700,
-            }}
-          >
-            Delete account
-          </button>
-        </Card>
-      )}
     </>
   );
 }

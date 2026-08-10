@@ -10,24 +10,24 @@
 :root {
   /* Surfaces.
 
-     Plum, warming towards pink as it lifts. The original #06070a was
-     effectively pure black while every surface above it carried a hue, which is
-     why the cards read as pale boxes on a void rather than panels raised off a
-     material.
+     Neutral graphite: no hue at all, so nothing competes with the brand.
+     Indigo, cyan, the category colours and the avatars are the only colour on
+     screen, which is what makes them read as information rather than
+     decoration. Navy and plum both tinted the surface and dulled them.
 
-     The steps are even (roughly +6 lightness each) so elevation is legible
-     without borders carrying it alone, and the whole stack shares one hue —
-     which here is the brand's own, so indigo and the pink in the avatars sit in
-     the same family rather than against it. */
-  --bg: #120e1b;
-  --surface: #1d1730;
-  --surface-2: #271f3d;
-  --surface-3: #342a4e;
-  --line: rgba(255, 255, 255, 0.08);
+     The original #06070a was effectively pure black while every surface above
+     it carried a hue, which is why cards looked like pale boxes on a void. The
+     steps here are even (roughly +6 lightness) so elevation is legible without
+     borders carrying it alone. */
+  --bg: #101114;
+  --surface: #191a1e;
+  --surface-2: #212328;
+  --surface-3: #2b2e34;
+  --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.14);
   --line-brand: rgba(99, 102, 241, 0.32);
 
-  --hero-bg: linear-gradient(145deg, #362a58 0%, #1e1833 100%);
+  --hero-bg: linear-gradient(145deg, #24262d 0%, #17181c 100%);
   --brand-cyan: #06b6d4;
   --brand-purple: #a855f7;
 
@@ -64,7 +64,7 @@
   --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
 
   --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
-  --page-bg: radial-gradient(120% 80% at 50% -10%, #3a2c60 0%, #1d1730 40%, #120e1b 78%);
+  --page-bg: radial-gradient(120% 80% at 50% -10%, #262931 0%, #191a1e 40%, #101114 78%);
 }
 
 

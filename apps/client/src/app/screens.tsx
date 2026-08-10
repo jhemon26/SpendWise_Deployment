@@ -56,7 +56,7 @@ const catOf = (cats: Category[], id: string | null): Category | undefined =>
 /* ── Home ─────────────────────────────────────────────────────────────── */
 
 export function Home({
-  transactions, categories, banks, d, currency, dayToDayMinor, savingsTargetMinor,
+  transactions, categories, banks, d, currency, dayToDayMinor,
   now, onEdit, onGoto, monthlyIncomeMinor = 0,
 }: ScreenData): JSX.Element {
   const st = statusOf(d.spentPct);
@@ -68,11 +68,19 @@ export function Home({
 
   const v = verdictFor(d, dayToDayMinor, monthName(now));
   const todayDelta = d.todaySpentMinor - d.evenPaceMinor;
-  const save = d.projectedSavingsMinor;
-  const saveTone = save >= savingsTargetMinor ? 'var(--positive)'
-    : save >= 0 ? 'var(--warning)' : 'var(--danger)';
-  const saveFoot = save >= savingsTargetMinor ? 'on track'
-    : save >= 0 ? `${money(savingsTargetMinor - save, currency)} short` : 'over budget';
+  /*
+   * What is left of this month's income after everything spent so far —
+   * day-to-day AND bills.
+   *
+   * This replaced a projected-savings figure that guessed what would be left IF
+   * the budget held. That guess went negative the moment day-to-day spending
+   * was under way, so it showed a large red "over budget" to people who were
+   * perfectly fine, and there was no way to tell from the tile what it meant.
+   * A plain subtraction cannot mislead in that way.
+   */
+  const leftOfIncome = monthlyIncomeMinor - d.monthTotalMinor;
+  const leftTone = leftOfIncome < 0 ? 'var(--danger)'
+    : leftOfIncome < monthlyIncomeMinor * 0.15 ? 'var(--warning)' : 'var(--positive)';
 
   return (
     <>
@@ -161,8 +169,14 @@ export function Home({
         <Tile label="This month" value={money(d.monthTotalMinor, currency)}
               foot={`of ${money0(dayToDayMinor + d.committedFixedMinor, currency)}`} />
         {monthlyIncomeMinor > 0
-          ? <Tile label="To save" value={money(save, currency)} foot={saveFoot} tone={saveTone} footTone={saveTone} />
-          : <Tile label="To save" value="—" foot="Add your income" />}
+          ? <Tile
+              label="Left of income"
+              value={money(leftOfIncome, currency)}
+              foot={leftOfIncome < 0 ? 'more than you earned' : `of ${money0(monthlyIncomeMinor, currency)}`}
+              tone={leftTone}
+              {...(leftOfIncome < 0 ? { footTone: 'var(--danger)' } : {})}
+            />
+          : <Tile label="Left of income" value="—" foot="Add your income" />}
       </div>
 
       {/* Recent activity sits directly under the number it explains. Bills are

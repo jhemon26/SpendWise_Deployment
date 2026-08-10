@@ -167,19 +167,36 @@ describe('rotate', () => {
   });
 
   it('rejects an expired token', async () => {
-    const p = await svc.issue(USER, 'd1');
+    // Pins its own TTL rather than relying on the default: these tests are
+    // about what happens AFTER expiry, and advancing "just past the default"
+    // silently stops testing anything the moment the default is raised.
+    const short = new TokenService(new InMemorySessionStore(), privatePem, publicPem, {
+      now: () => clock, refreshTtlDays: 30,
+    });
+    const p = await short.issue(USER, 'd1');
     advance(31 * 86_400_000);
-    await expect(svc.rotate(p.refresh_token)).rejects.toMatchObject({
+    await expect(short.rotate(p.refresh_token)).rejects.toMatchObject({
       code: 'expired_refresh',
     });
   });
 
   it('reports a replay after expiry as expired, not as reuse', async () => {
-    const p = await svc.issue(USER, 'd1');
+    const short = new TokenService(new InMemorySessionStore(), privatePem, publicPem, {
+      now: () => clock, refreshTtlDays: 30,
+    });
+    const p = await short.issue(USER, 'd1');
     advance(31 * 86_400_000);
-    await expect(svc.rotate(p.refresh_token)).rejects.toMatchObject({ code: 'expired_refresh' });
+    await expect(short.rotate(p.refresh_token)).rejects.toMatchObject({ code: 'expired_refresh' });
     // it was retired on the way out, so a further replay is reuse
-    await expect(svc.rotate(p.refresh_token)).rejects.toMatchObject({ code: 'reuse_detected' });
+    await expect(short.rotate(p.refresh_token)).rejects.toMatchObject({ code: 'reuse_detected' });
+  });
+
+  it('the default window is long enough for normal gaps in use', async () => {
+    // Rolling, so this bounds INACTIVITY, not session age. A month away from a
+    // budgeting app is ordinary and must not sign someone out.
+    const p = await svc.issue(USER, 'd1');
+    advance(60 * 86_400_000);
+    await expect(svc.rotate(p.refresh_token)).resolves.toBeTruthy();
   });
 });
 

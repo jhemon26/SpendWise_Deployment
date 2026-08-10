@@ -166,16 +166,27 @@ export class AuthClient {
    * Returns null rather than throwing when there is no valid cookie — that is
    * the ordinary "not signed in" case, not an error worth surfacing.
    */
-  async restore(): Promise<AuthedUser | null> {
+  /**
+   * Trade the refresh cookie for a fresh access token.
+   *
+   * Reports WHY it failed, which the caller needs. "The server said no" and "I
+   * could not reach the server" both used to return null, so a flaky launch was
+   * indistinguishable from being signed out — and an offline-first app threw
+   * people back to sign-in for a dropped connection.
+   */
+  async restoreSession(): Promise<{ user: AuthedUser | null; reachable: boolean }> {
     try {
       const res = await this.post('/v1/auth/refresh', {});
-      if (!res.ok) return null;
-      return this.adopt(await res.json() as { access_token: string });
+      if (!res.ok) return { user: null, reachable: true };   // genuinely signed out
+      return { user: this.adopt(await res.json() as { access_token: string }), reachable: true };
     } catch {
-      // Offline at launch is normal for this app: fall through to the local
-      // database and try again when the network returns.
-      return null;
+      return { user: null, reachable: false };               // network, not auth
     }
+  }
+
+  /** Convenience for callers that only care whether a token was obtained. */
+  async restore(): Promise<AuthedUser | null> {
+    return (await this.restoreSession()).user;
   }
 
   async logout(): Promise<void> {

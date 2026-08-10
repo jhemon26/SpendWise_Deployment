@@ -89,9 +89,20 @@ export function App(): JSX.Element {
       // Trade the HttpOnly cookie for a fresh access token. The access token is
       // memory-only, so this is what makes "still signed in" survive a reload.
       if (API_BASE) {
-        const restored = await auth.restore();
-        if (restored) {
-          await guardAccount(restored.accessToken);
+        const { user, reachable } = await auth.restoreSession();
+        if (user) {
+          await guardAccount(user.accessToken);
+          setSignedIn(true);
+          startSync();
+        } else if (!reachable && localStorage.getItem('sw.account')) {
+          /*
+           * Unreachable, but this device has signed in before.
+           *
+           * The app is local-first, so stay in it and work from the local
+           * database. Demanding a sign-in because the network dropped is both
+           * useless — signing in also needs the network — and the thing that
+           * made people feel logged out again and again.
+           */
           setSignedIn(true);
           startSync();
         }

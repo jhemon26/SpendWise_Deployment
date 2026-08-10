@@ -45,7 +45,9 @@ export class AuthController {
   ) {}
 
   private get cookieOpts(): { secure: boolean; maxAgeDays: number } {
-    return { secure: process.env['NODE_ENV'] === 'production', maxAgeDays: 30 };
+    // Matches the refresh token's own lifetime; a cookie that expires first
+    // would sign people out while the server still considered them valid.
+    return { secure: process.env['NODE_ENV'] === 'production', maxAgeDays: 180 };
   }
 
   /**

@@ -74,7 +74,17 @@ export class TokenService {
     opts: TokenServiceOptions = {},
   ) {
     this.accessTtl = opts.accessTtlSeconds ?? 15 * 60;
-    this.refreshDays = opts.refreshTtlDays ?? 30;
+    /*
+     * 180 days, not 30.
+     *
+     * The window is rolling — every refresh issues a new token and re-sets the
+     * cookie — so this is the limit on INACTIVITY, not on session age. Thirty
+     * days meant someone who did not open the app for a month was signed out,
+     * which for a budgeting app is a normal gap rather than a suspicious one.
+     * Rotation with reuse detection is what protects a stolen token, and that
+     * is unaffected by the length of this window.
+     */
+    this.refreshDays = opts.refreshTtlDays ?? 180;
     this.issuer = opts.issuer ?? 'https://api.spendwise.app';
     this.audience = opts.audience ?? 'spendwise';
     this.now = opts.now ?? (() => new Date());

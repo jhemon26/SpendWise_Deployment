@@ -109,9 +109,17 @@ describe('restore — what makes HttpOnly usable', () => {
     expect(tokens.getAccessToken()).toBeNull();
   });
 
-  it('returns null when offline rather than throwing', async () => {
-    // Launching offline is normal for this app: fall through to the local
-    // database and retry when the network returns.
+  it('reports unreachable separately from signed out', async () => {
+    // These used to be indistinguishable, so a dropped connection at launch
+    // threw people back to the sign-in screen of an offline-first app.
+    const offline = client(() => { throw new Error('ECONNREFUSED'); });
+    expect(await offline.restoreSession()).toEqual({ user: null, reachable: false });
+
+    const rejected = client(() => json({ code: 'invalid_refresh' }, 401));
+    expect(await rejected.restoreSession()).toEqual({ user: null, reachable: true });
+  });
+
+  it('still returns null from restore() when offline', async () => {
     const c = client(() => { throw new Error('ECONNREFUSED'); });
     expect(await c.restore()).toBeNull();
   });

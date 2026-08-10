@@ -178,7 +178,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
               : stage === 'phone' ? 'We’ll text you a code.'
-                : 'Know exactly what you have available to spend.'}
+                : 'See what’s actually yours to spend.'}
           </p>
         </header>
 
@@ -297,7 +297,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
           </svg>
-          No passwords. Your data stays on your device.
+          Passwordless. Verified by Google, Apple or a one-time code.
         </p>
       </section>
     </main>
@@ -401,12 +401,15 @@ const shell: React.CSSProperties = {
 const mark: React.CSSProperties = { display: 'inline-block', marginBottom: 'var(--s5)' };
 
 const headline: React.CSSProperties = {
-  fontSize: 32, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.1,
+  fontSize: 34, fontWeight: 800, letterSpacing: '-.04em', lineHeight: 1.05,
 };
 
 const subhead: React.CSSProperties = {
-  fontSize: 15, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5,
-  maxWidth: '26ch', marginInline: 'auto',
+  fontSize: 17, fontWeight: 500, color: 'var(--text-muted)',
+  // Space enough to read as its own line, not a caption pinned to the title.
+  marginTop: 'var(--s4)', lineHeight: 1.45, letterSpacing: '-.01em',
+  // ~22ch breaks it across two balanced lines instead of one long thin one.
+  maxWidth: '22ch', marginInline: 'auto',
 };
 
 /** No panel: three buttons on a dark field do not need a frame around them. */
@@ -525,4 +528,6 @@ const soonNote: React.CSSProperties = {
 const microcopy: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
   fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', textAlign: 'center',
+  // Sits with the buttons it describes rather than floating at the bottom.
+  marginTop: 'calc(-1 * var(--s4))',
 };

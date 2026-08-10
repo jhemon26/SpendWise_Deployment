@@ -86,9 +86,12 @@ export const PRIVACY_SECTIONS: PolicySection[] = [
     ],
   },
   {
-    heading: 'Cookies and storage',
+    heading: 'Cookies',
     body: [
-      'We use browser storage to keep you signed in and to hold your data on your device. There are no advertising or analytics cookies.',
+      // PECR requires telling people what is stored on their device and why.
+      // Strictly necessary storage needs no consent, but it still has to be
+      // disclosed, so this cannot be dropped — only kept to the minimum.
+      'We use only the storage the app needs to run and to keep you signed in. No advertising or analytics cookies, and no tracking across other sites.',
     ],
   },
   {

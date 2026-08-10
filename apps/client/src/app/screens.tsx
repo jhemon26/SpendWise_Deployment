@@ -155,7 +155,7 @@ export function Home({
           </div>
 
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
+            display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6,
             marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
           }}>
             {/* "Budget £1,040" above "Available £840" read as a mistake: the two
@@ -163,17 +163,25 @@ export function Home({
                 the headline. Naming the two pots separately makes the headline
                 obviously equal to the day-to-day figure, and shows the bills
                 total that was previously folded away. */}
+            {/* "Total out" sits between the two pots and the goal so it reads as
+                their sum. Named "out" rather than "Total" because Saving goal is
+                in the same row and is not part of it. */}
             {([['Day-to-day', money0(dayToDayMinor, currency), false],
                ['Bills', money0(d.committedFixedMinor, currency), false],
+               ['Total out', money0(dayToDayMinor + d.committedFixedMinor, currency), false],
                ['Saving goal', savingsTargetMinor > 0 ? money0(savingsTargetMinor, currency) : '—', true]] as const).map(([k, v, piggy]) => (
               <div key={k} style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>
+                <p style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase',
+                  color: 'var(--text-dim)', lineHeight: 1.25, minHeight: '2.5em',
+                }}>{k}</p>
                 <p className="num" style={{
-                  fontSize: 'var(--fs-sm)', fontWeight: 800, marginTop: 4,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  fontSize: 'var(--fs-xs)', fontWeight: 800, marginTop: 3,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  whiteSpace: 'nowrap',
                 }}>
                   {piggy && (
-                    <svg viewBox="0 0 24 24" width={17} height={17} aria-hidden
+                    <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden
                          style={{ flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: PIGGY }} />
                   )}
                   {v}

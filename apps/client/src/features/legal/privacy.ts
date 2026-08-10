@@ -2,7 +2,14 @@
  * Privacy notice.
  *
  * DRAFTED FROM THE CODE, NOT FROM A TEMPLATE — every claim below was checked
- * against what the app actually does. It still needs review by someone
+ * against what the app actually does.
+ *
+ * Deliberately describes WHAT is done, never HOW. Naming the hosting vendor or
+ * the mechanism behind a control tells an attacker where to start and tells a
+ * user nothing they benefit from. What cannot be removed is the disclosure GDPR
+ * requires: the data, the purposes, the lawful bases, the categories of
+ * recipient, retention and rights. Cutting those to look secure would trade a
+ * theoretical risk for a certain legal one. It still needs review by someone
  * qualified before launch: this describes the processing accurately, but
  * whether the wording satisfies UK GDPR is a legal judgement, not an
  * engineering one. The controller's legal name and address are placeholders
@@ -35,7 +42,7 @@ export const PRIVACY_SECTIONS: PolicySection[] = [
       'Account: the phone number you verify, or the account identifier and email address supplied by Google or Apple if you sign in that way. We never receive your Google or Apple password.',
       'Your budget: the display name, monthly income, budgets, savings target, categories, cards and avatar you enter.',
       'Your transactions: amount, currency, date, category, card, and — if you add them — the merchant name and any note.',
-      'Technical: a device identifier so your devices can sync, and the IP address and time of security-relevant events such as sign-in.',
+      'Technical: an identifier for each device you use, so your data can sync between them, and limited security records such as the time and network address of a sign-in.',
       'We do not connect to your bank, and we do not collect location, contacts, or browsing activity.',
     ],
   },
@@ -43,7 +50,7 @@ export const PRIVACY_SECTIONS: PolicySection[] = [
     heading: 'Why we use it, and on what basis',
     body: [
       'To provide the app — storing and syncing your budget and transactions across your devices. Lawful basis: performance of our contract with you.',
-      'To sign you in and keep your account secure, including rate limiting and keeping a record of sign-in events. Lawful basis: our legitimate interest in preventing unauthorised access and abuse.',
+      'To sign you in and to detect and prevent abuse of the service. Lawful basis: our legitimate interest in keeping accounts secure.',
       'To send a one-time code by SMS when you choose to sign in by phone. Lawful basis: performance of our contract with you.',
       'We do not use your data for advertising, we do not sell it, and we do not use it to make automated decisions about you.',
     ],
@@ -51,16 +58,15 @@ export const PRIVACY_SECTIONS: PolicySection[] = [
   {
     heading: 'Where it is stored',
     body: [
-      'Your data is stored on your device first, so the app works offline, and synced to our servers hosted with DigitalOcean.',
-      'Merchant names and notes are encrypted before they are written to our database.',
-      'Each account’s data is isolated at the database level, so one account cannot read another’s.',
+      'Your data is stored on your device first, so the app works offline, and synced to our servers in the United Kingdom.',
+      'Sensitive fields are encrypted at rest, and every account is kept separate from every other.',
     ],
   },
   {
     heading: 'Who else sees it',
     body: [
       'Google or Apple, if you choose to sign in with them — they confirm your identity to us. Their own privacy policies apply to that.',
-      'Our hosting provider (DigitalOcean) and, when SMS sign-in is enabled, an SMS provider. They process data on our instructions only.',
+      'Our cloud hosting provider and, when SMS sign-in is enabled, a messaging provider. They act only on our instructions and cannot use your data for their own purposes.',
       'Nobody else. We do not share or sell your data.',
     ],
   },
@@ -68,7 +74,7 @@ export const PRIVACY_SECTIONS: PolicySection[] = [
     heading: 'How long we keep it',
     body: [
       'For as long as your account exists. Delete your account in Profile and your transactions, categories, cards and settings are removed immediately and permanently.',
-      'Security records of sign-in events are kept after deletion for fraud prevention, but stripped of anything identifying you.',
+      'Limited security records are kept after deletion to prevent fraud, with anything identifying you removed.',
     ],
   },
   {

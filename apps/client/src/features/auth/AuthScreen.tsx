@@ -67,6 +67,9 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
    * fire.
    */
   const [accepted, setAccepted] = useState(false);
+  // Set when someone tries to proceed without ticking; the control turns red
+  // rather than pushing a sentence into the error slot above it.
+  const [consentFlash, setConsentFlash] = useState(false);
   const [dial, setDial] = useState('+44');
   const [local, setLocal] = useState('');
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
@@ -136,7 +139,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   /** True when the user may proceed; otherwise says why, once. */
   function gate(): boolean {
     if (accepted) return true;
-    setError('Please accept the privacy notice to continue.');
+    setConsentFlash(true);
     return false;
   }
 
@@ -343,16 +346,21 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           )}
         </div>
 
-        <label style={consentRow}>
+        <label style={{ ...consentRow, ...(consentFlash ? { color: 'var(--danger)' } : {}) }}>
           <input
             type="checkbox"
             checked={accepted}
-            onChange={(e) => { setAccepted(e.target.checked); if (e.target.checked) setError(null); }}
-            style={consentBox}
+            onChange={(e) => { setAccepted(e.target.checked); if (e.target.checked) setConsentFlash(false); }}
+            aria-invalid={consentFlash}
+            style={{ ...consentBox, ...(consentFlash ? { accentColor: 'var(--danger)', outline: '2px solid var(--danger)', outlineOffset: 2 } : {}) }}
           />
           <span>
             I have read and agree to the{' '}
-            <button type="button" onClick={() => setShowPolicy(true)} style={policyLink}>
+            <button
+              type="button"
+              onClick={() => setShowPolicy(true)}
+              style={{ ...policyLink, ...(consentFlash ? { color: 'var(--danger)' } : {}) }}
+            >
               privacy notice
             </button>.
           </span>

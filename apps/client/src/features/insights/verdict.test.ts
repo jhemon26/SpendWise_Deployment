@@ -43,12 +43,12 @@ describe('verdictFor', () => {
     // Being "under pace" is irrelevant if there is no money left.
     const v = verdictFor(d({ leftMinor: -1, deltaMinor: -BUDGET }), BUDGET, 'August');
     expect(v.tone).toBe('bad');
-    expect(v.headline).toBe('Budget gone');
+    expect(v.headline).toBe('Over budget');
   });
 
   it('does not congratulate an empty first day', () => {
     const v = verdictFor(d({ dayOfMonth: 1, flexSpentMinor: 0, deltaMinor: -BUDGET }), BUDGET, 'August');
-    expect(v.headline).toBe('Fresh month');
+    expect(v.headline).toBe('New month');
   });
 
   it('asks for a budget rather than dividing by zero', () => {
@@ -60,12 +60,12 @@ describe('verdictFor', () => {
   it('names the day the money runs out, with a correct ordinal', () => {
     // Half the budget gone by day 3 => runs out around day 6.
     const v = verdictFor(d({ dayOfMonth: 3, flexSpentMinor: 50000, leftMinor: 50000, deltaMinor: 40000 }), BUDGET, 'August');
-    expect(v.detail).toMatch(/runs? out on the \d+(st|nd|rd|th)/);
+    expect(v.detail).toMatch(/run out on the \d+(st|nd|rd|th)/);
   });
 
   it('never claims a run-out date it cannot know', () => {
     const v = verdictFor(d({ flexSpentMinor: 0, deltaMinor: Math.round(BUDGET * 0.3), dayOfMonth: 10 }), BUDGET, 'August');
-    expect(v.detail).not.toMatch(/runs? out/);
+    expect(v.detail).not.toMatch(/run out/);
   });
 
   it('has an icon for every tone, and none reference anything external', () => {

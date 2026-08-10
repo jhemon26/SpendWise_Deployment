@@ -8,11 +8,11 @@ import type { Derived } from './selectors.js';
  * £50 over is nothing on a £2,000 budget and a crisis on a £100 one, and a
  * message that ignores that is noise.
  *
- * The tone escalates, but it never jokes about actually running out of money.
- * Someone genuinely close to the edge is the last person who needs their
- * budgeting app being funny about it, and they are exactly who sees the worst
- * tier. The humour lives in the good news, and the bad news stays plain and
- * useful — it says what to do, not how doomed you are.
+ * Plain statements of position, the way a bank writes them. An earlier version
+ * was jokey at both ends; on a screen showing someone's actual finances that
+ * reads as flippant rather than friendly, and the joke wears out by the third
+ * time you see it. Every line now says where you stand and what follows from
+ * it.
  */
 
 export type VerdictTone = 'great' | 'good' | 'steady' | 'warn' | 'bad';
@@ -56,12 +56,12 @@ export function verdictFor(d: Derived, dayToDayMinor: number, monthName: string)
     return {
       tone: 'steady',
       headline: 'Set a budget',
-      detail: 'then this is where you find out how you are doing',
+      detail: 'this shows your position once one is set',
       icon: 'steady',
     };
   }
   if (d.flexSpentMinor === 0 && d.dayOfMonth <= 2) {
-    return { tone: 'steady', headline: 'Fresh month', detail: 'nothing spent yet', icon: 'steady' };
+    return { tone: 'steady', headline: 'New month', detail: 'nothing spent yet', icon: 'steady' };
   }
 
   // Positive delta = spent more than the calendar expects by now.
@@ -71,37 +71,37 @@ export function verdictFor(d: Derived, dayToDayMinor: number, monthName: string)
   if (d.leftMinor < 0) {
     return {
       tone: 'bad',
-      headline: 'Budget gone',
-      detail: `${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} of ${monthName} still to go`,
+      headline: 'Over budget',
+      detail: `${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} of ${monthName} remaining`,
       icon: 'bad',
     };
   }
   if (share > 0.15) {
     return {
       tone: 'bad',
-      headline: 'Spending fast',
-      detail: outOn ? `at this rate you run out on the ${ordinal(outOn)}` : 'well ahead of the calendar',
+      headline: 'Above plan',
+      detail: outOn ? `funds run out on the ${ordinal(outOn)} at this rate` : 'ahead of where the month should be',
       icon: 'bad',
     };
   }
   if (share > 0.04) {
     return {
       tone: 'warn',
-      headline: 'A little ahead',
-      detail: outOn ? `this pace runs out on the ${ordinal(outOn)}` : 'ease off and it evens out',
+      headline: 'Slightly above plan',
+      detail: outOn ? `funds run out on the ${ordinal(outOn)} at this rate` : 'a little ahead of the month',
       icon: 'warn',
     };
   }
   if (share > -0.04) {
-    return { tone: 'steady', headline: 'Right on pace', detail: 'keep it exactly here', icon: 'steady' };
+    return { tone: 'steady', headline: 'On plan', detail: 'spending matches the month so far', icon: 'steady' };
   }
   if (share > -0.15) {
-    return { tone: 'good', headline: 'Comfortably under', detail: 'payday is going to feel calm', icon: 'good' };
+    return { tone: 'good', headline: 'Under budget', detail: 'behind the month, with room to spare', icon: 'good' };
   }
   return {
     tone: 'great',
-    headline: 'Seriously underspending',
-    detail: 'keep this up and the Porsche fund is real',
+    headline: 'Well under budget',
+    detail: 'well behind the month at this rate',
     icon: 'great',
   };
 }

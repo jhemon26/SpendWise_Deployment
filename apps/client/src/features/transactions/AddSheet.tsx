@@ -90,7 +90,15 @@ export function AddSheet({
 
   const category = selectable.find((c) => c.local_id === categoryId) ?? null;
   const isFixedSpend = Boolean(category?.is_fixed);
-  const canSave = amountMinor > 0 && (isIncome || categoryId !== null) && bankId !== null;
+  /*
+   * A card is NOT required.
+   *
+   * Requiring one made saving impossible for anyone with no cards set up —
+   * there is no way to add one from this sheet, so the button could never
+   * enable however much was typed. Which card was used is useful detail, not a
+   * fact the transaction needs to exist.
+   */
+  const canSave = amountMinor > 0 && (isIncome || categoryId !== null);
   const accent = isIncome ? 'var(--positive)' : (category?.colour ?? 'var(--brand)');
 
   /* The live consequence. When editing, the original amount is already counted
@@ -317,6 +325,7 @@ export function AddSheet({
         <button
           type="button"
           disabled={!canSave}
+          title={canSave ? undefined : amountMinor <= 0 ? 'Enter an amount' : 'Pick a category'}
           onClick={() => void submit()}
           style={{
             width: '100%', background: 'var(--brand)', color: '#fff', padding: 15, marginTop: 'var(--s4)',

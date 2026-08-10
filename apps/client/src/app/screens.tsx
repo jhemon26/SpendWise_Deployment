@@ -143,14 +143,22 @@ export function Home({
           </div>
 
           <div style={{
-            marginTop: 'var(--s3)', display: 'flex', alignItems: 'center',
-            gap: 8, flexWrap: 'wrap', fontSize: 'var(--fs-xs)', fontWeight: 700,
+            marginTop: 'var(--s4)', display: 'flex', alignItems: 'center', gap: 10,
+            padding: 'var(--s3)', borderRadius: 'var(--r-sm)',
+            background: 'rgba(255,255,255,.04)',
+            borderLeft: `3px solid ${verdictColour(v.tone)}`,
           }}>
-            <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden
+            <svg viewBox="0 0 24 24" width={22} height={22} aria-hidden
                  style={{ flexShrink: 0 }}
                  dangerouslySetInnerHTML={{ __html: VERDICT_ICON[v.icon] }} />
-            <span style={{ color: verdictColour(v.tone) }}>{v.headline}</span>
-            <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>· {v.detail}</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 700, color: verdictColour(v.tone) }}>
+                {v.headline}
+              </span>
+              <span style={{ display: 'block', fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-dim)', marginTop: 2 }}>
+                {v.detail}
+              </span>
+            </span>
           </div>
         </div>
       </div>

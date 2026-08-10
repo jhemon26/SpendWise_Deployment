@@ -12,6 +12,7 @@ import { AuthClient } from '../core/auth/client.js';
 import { createSync, tokenStore } from '../core/sync/index.js';
 import { subjectOf } from '../core/auth/subject.js';
 import { fetchSettings, saveSettings } from '../core/settings.remote.js';
+import { fetchIdentities, type Identity } from '../core/auth/identities.js';
 import type { SyncEngine } from '../core/sync/engine.js';
 import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/selectors.js';
 import { seedDemo } from '../features/onboarding/demo.js';
@@ -65,6 +66,7 @@ export function App(): JSX.Element {
   const [bankEdit, setBankEdit] = useState<Bank | null | undefined>(undefined);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [identities, setIdentities] = useState<Identity[]>([]);
   const state = useApp();
 
   useEffect(() => {
@@ -95,9 +97,10 @@ export function App(): JSX.Element {
       // Devices set up before demo seeding was restricted still hold those rows.
       if (API_BASE) await purgeDemoRows();
       await state.hydrate(db);
-      // After hydrate: upsertBank writes through the store, which needs the
-      // hydrated list to append to rather than overwrite.
-      await ensureDefaultBanks();
+      // Local-only mode has no server to ask, so an empty database IS a new
+      // account. After hydrate: upsertBank writes through the store, which
+      // needs the hydrated list to append to rather than overwrite.
+      if (!API_BASE) await ensureDefaultBanks(true);
     })().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       // eslint-disable-next-line no-console
@@ -138,7 +141,17 @@ export function App(): JSX.Element {
    * Only ever created when there are none, so it cannot duplicate or come back
    * after someone deliberately deletes them all.
    */
-  async function ensureDefaultBanks(): Promise<void> {
+  async function ensureDefaultBanks(isNewAccount: boolean): Promise<void> {
+    /*
+     * Only for an account that has never existed before.
+     *
+     * Checking "does this device have none?" duplicated them: a second device
+     * starts with an empty local database, creates four, and then the first
+     * sync pulls down the four the other device already made — eight cards for
+     * one person. The server is the authority on whether this account is new,
+     * and it tells us at sign-in.
+     */
+    if (!isNewAccount && API_BASE) return;
     if ((await db.all('banks')).some((b) => !b.deleted_at)) return;
     for (const [name, colour] of [
       ['Debit card', '#6366F1'],
@@ -226,6 +239,7 @@ export function App(): JSX.Element {
       await state.hydrate(db);
     }
     localStorage.setItem('sw.account', sub);
+    void fetchIdentities(auth, API_BASE).then(setIdentities);
 
     /* Adopt the server's settings so a new device arrives set up. Only when
        this device has none of its own — otherwise signing in on the phone you
@@ -321,6 +335,7 @@ export function App(): JSX.Element {
     onEditAvatar: () => setAvatarOpen(true),
     ...(API_BASE && signedIn ? { onDeleteAccount: () => setDeleteOpen(true) } : {}),
     monthlyIncomeMinor: state.monthlyIncomeMinor,
+    identities,
     avatarEmoji: state.avatarEmoji,
     avatarColour: state.avatarColour,
     // Running purely locally there is no session to end, so Profile hides it.
@@ -377,6 +392,7 @@ export function App(): JSX.Element {
             startSync();
             // A brand-new account has nothing to show, so always onboard it.
             if (isNew) { localStorage.removeItem('sw.onboarded'); setOnboarded(false); }
+            await ensureDefaultBanks(isNew);
           })();
         }}
       />

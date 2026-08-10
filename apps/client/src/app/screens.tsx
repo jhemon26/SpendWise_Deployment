@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { formatMoney, formatSignedMoney, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import { Avatar, Bar, Card, CardHead, Chip, Empty, Gauge, Icon } from '../design-system/components.js';
+import { labelFor, PROVIDER_NAME, type Identity } from '../core/auth/identities.js';
 import {
   billsFor, categoryBreakdown, dayLabel, derive, fixedCostsTotalMinor, groupByDay,
   historyAverageMinor, monthHistory, statusOf, STATUS_COLOUR,
@@ -34,6 +35,7 @@ export interface ScreenData {
   onEditBank?: ((b: Bank | null) => void) | undefined;
   onEditAvatar?: (() => void) | undefined;
   onDeleteAccount?: (() => void) | undefined;
+  identities?: Identity[] | undefined;
   monthlyIncomeMinor?: number | undefined;
   avatarEmoji?: string | undefined;
   avatarColour?: string | undefined;
@@ -660,7 +662,7 @@ export function Profile({
   categories, banks, transactions, currency, displayName, dayToDayMinor,
   savingsTargetMinor, d, now, onSignOut, onEditSetting, onEditCategory, onEditBank,
   onEditAvatar, avatarEmoji = '', avatarColour = '#6366F1', onDeleteAccount,
-  monthlyIncomeMinor = 0,
+  monthlyIncomeMinor = 0, identities = [],
 }: ScreenData): JSX.Element {
   const flex = categories.filter((c) => !c.deleted_at && !c.is_fixed);
   const fixed = categories.filter((c) => !c.deleted_at && c.is_fixed);
@@ -698,6 +700,16 @@ export function Profile({
             <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 3 }}>
               {monthName(now)} · {money0(dayToDayMinor, currency)} day-to-day
             </p>
+            {identities.length > 0 && (
+              <p style={{
+                fontSize: 'var(--fs-2xs)', color: 'var(--text-muted)', fontWeight: 600, marginTop: 4,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {PROVIDER_NAME[identities[0]!.provider] ?? identities[0]!.provider}
+                {' · '}
+                {labelFor(identities[0]!)}
+              </p>
+            )}
           </div>
 
           {onEditSetting && (
@@ -708,6 +720,21 @@ export function Profile({
           )}
         </div>
       </Card>
+
+      {identities.length > 0 && (
+        <Card>
+          <CardHead title="Signed in as" />
+          {identities.map((i, n) => (
+            <SettingRow
+              key={`${i.provider}-${labelFor(i)}`}
+              divider={n > 0}
+              icon={<SettingGlyph bg="var(--surface-3)" text={(PROVIDER_NAME[i.provider] ?? '?').slice(0, 1)} />}
+              name={labelFor(i)}
+              sub={PROVIDER_NAME[i.provider] ?? i.provider}
+            />
+          ))}
+        </Card>
+      )}
 
       <Card>
         <CardHead title="Your money" />

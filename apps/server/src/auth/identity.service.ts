@@ -84,10 +84,15 @@ export class IdentityService {
     });
   }
 
-  async listForUser(userId: string): Promise<Array<{ provider: string; email: string | null }>> {
+  async listForUser(
+    userId: string,
+  ): Promise<Array<{ provider: string; email: string | null; phone_e164: string | null }>> {
     return this.db.withUser(userId, async (c) => {
-      const { rows } = await c.query<{ provider: string; email: string | null }>(
-        `SELECT provider, email FROM identities WHERE user_id = $1 ORDER BY provider`,
+      // The phone is needed as well as the email: a phone identity has no
+      // email, so returning only the email left phone sign-ins with nothing to
+      // show for the account they are actually in.
+      const { rows } = await c.query<{ provider: string; email: string | null; phone_e164: string | null }>(
+        `SELECT provider, email, phone_e164 FROM identities WHERE user_id = $1 ORDER BY provider`,
         [userId],
       );
       return rows;

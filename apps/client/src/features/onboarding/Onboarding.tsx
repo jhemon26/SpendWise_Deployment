@@ -408,7 +408,7 @@ const glow: React.CSSProperties = {
   background: 'radial-gradient(circle, rgba(99,102,241,.30) 0%, rgba(6,182,212,.12) 42%, transparent 70%)',
 };
 const shell: React.CSSProperties = {
-  position: 'relative', zIndex: 1, width: 'min(100%, 400px)', display: 'grid', gap: 'var(--s4)',
+  position: 'relative', zIndex: 1, width: 'min(100%, 380px)', display: 'grid', gap: 'var(--s6)',
 };
 const stepLabel: React.CSSProperties = {
   fontSize: 'var(--fs-2xs)', fontWeight: 700, letterSpacing: '.07em',
@@ -419,23 +419,20 @@ const skipLink: React.CSSProperties = {
   fontSize: 'var(--fs-2xs)', fontWeight: 700, color: 'var(--text-dim)',
 };
 const backBtn: React.CSSProperties = {
-  width: 52, minHeight: 52, borderRadius: 'var(--r-md)', cursor: 'pointer',
+  width: 48, minHeight: 48, borderRadius: 4, cursor: 'pointer',
   background: 'var(--surface-3)', border: 0, color: 'var(--text-muted)',
   display: 'grid', placeItems: 'center',
 };
 const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 };
 const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };
-const card: React.CSSProperties = {
-  padding: 'var(--s5)', borderRadius: 22,
-  background: 'var(--surface-2)',
-  border: '1px solid var(--line-strong)',
-  boxShadow: '0 24px 60px -24px rgba(0,0,0,.75)', display: 'grid', gap: 'var(--s3)',
-};
-const h1: React.CSSProperties = { fontSize: 25, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15 };
-const lede: React.CSSProperties = { fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.55 };
+/** No panel, matching sign-in. The step IS the screen. */
+const card: React.CSSProperties = { display: 'grid', gap: 'var(--s3)' };
+const h1: React.CSSProperties = { fontSize: 28, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.12 };
+const lede: React.CSSProperties = { fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s2)' };
 const field: React.CSSProperties = {
-  width: '100%', background: 'var(--surface-2)', border: '1px solid var(--line)',
-  borderRadius: 'var(--r-md)', padding: '16px var(--s4)', fontSize: 17, fontWeight: 600, color: 'var(--text)', outline: 'none',
+  width: '100%', background: 'var(--surface-2)', border: '1px solid var(--line-strong)',
+  borderRadius: 6, padding: '15px var(--s4)', fontSize: 16, fontWeight: 600,
+  color: 'var(--text)', outline: 'none',
 };
 const segRow: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: 4,
@@ -487,13 +484,13 @@ const totalRow: React.CSSProperties = {
   border: '1px solid rgba(99,102,241,.24)', fontSize: 'var(--fs-sm)', fontWeight: 700,
 };
 const hint: React.CSSProperties = { fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)' };
+/** Same metrics as sign-in, so the flow keeps one control language. */
 const baseBtn: React.CSSProperties = {
-  width: '100%', minHeight: 52, borderRadius: 'var(--r-md)', border: 0,
-  fontSize: 'var(--fs-md)', fontWeight: 700, cursor: 'pointer',
+  width: '100%', minHeight: 48, borderRadius: 4, border: 0,
+  fontSize: 15, fontWeight: 600, cursor: 'pointer',
 };
 const primary = (disabled: boolean): React.CSSProperties => ({
   ...baseBtn, background: 'var(--brand)', color: '#fff',
-  boxShadow: disabled ? 'none' : '0 8px 22px -10px rgba(99,102,241,.9)',
   opacity: disabled ? 0.35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
 });
 const ghost: React.CSSProperties = {

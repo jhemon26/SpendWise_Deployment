@@ -170,17 +170,17 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
       <div style={glow} aria-hidden="true" />
       <section style={shell}>
         <header style={{ textAlign: 'center' }}>
-          <img src="/icon-192.png" alt="" width={60} height={60} style={mark} />
+          <img src="/icon-192.png" alt="" width={88} height={88} style={mark} />
           <h1 style={headline}>
             {stage === 'code' ? 'Enter your code'
               : stage === 'phone' ? 'Your mobile number'
-                : 'Sign in to SpendWise'}
+                : 'SpendWise'}
           </h1>
-          <p style={{ ...subhead, ...(stage === 'choose' ? { display: 'none' } : {}) }}>
+          <p style={subhead}>
             {stage === 'code'
               ? <>We texted a 6-digit code to <b style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{phone}</b></>
               : stage === 'phone' ? 'We’ll text you a code.'
-                : ''}
+                : 'Know exactly what’s safe to spend today.'}
           </p>
         </header>
 
@@ -207,7 +207,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                 </p>
               )}
               <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
-              <button type="button" onClick={() => setStage('phone')} style={primary(false)}>
+              <button type="button" onClick={() => setStage('phone')} style={secondaryDark}>
                 Continue with mobile number
               </button>
             </div>
@@ -296,7 +296,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.5" /><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
           </svg>
-          Secure, passwordless sign-in.
+          No passwords. Your data stays on your device.
         </p>
       </section>
     </main>
@@ -385,26 +385,23 @@ const glow: React.CSSProperties = {
 };
 
 const shell: React.CSSProperties = {
-  position: 'relative', zIndex: 1, width: 'min(100%, 400px)',
-  display: 'grid', gap: 'var(--s5)',
+  position: 'relative', zIndex: 1, width: 'min(100%, 360px)',
+  display: 'grid', gap: 'var(--s7)',
 };
 
-const mark: React.CSSProperties = { borderRadius: 17, marginBottom: 'var(--s4)' };
+const mark: React.CSSProperties = { borderRadius: 24, marginBottom: 'var(--s5)' };
 
 const headline: React.CSSProperties = {
-  fontSize: 25, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.15,
+  fontSize: 32, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.1,
 };
 
 const subhead: React.CSSProperties = {
-  fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5,
+  fontSize: 15, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5,
+  maxWidth: '26ch', marginInline: 'auto',
 };
 
-const card: React.CSSProperties = {
-  padding: 'var(--s5)', borderRadius: 16,
-  background: 'var(--surface-2)',
-  border: '1px solid var(--line-strong)',
-  boxShadow: '0 24px 60px -24px rgba(0,0,0,.75)',
-};
+/** No panel: three buttons on a dark field do not need a frame around them. */
+const card: React.CSSProperties = { display: 'grid', gap: 10 };
 
 const stack: React.CSSProperties = { display: 'grid', gap: 10 };
 
@@ -423,8 +420,8 @@ const fieldLabel: React.CSSProperties = {
 
 const phoneRow: React.CSSProperties = {
   display: 'flex', alignItems: 'stretch',
-  background: 'var(--surface-2)', border: '1px solid var(--line)',
-  borderRadius: 'var(--r-md)', overflow: 'hidden',
+  background: 'var(--surface-2)', border: '1px solid var(--line-strong)',
+  borderRadius: 6, overflow: 'hidden',
 };
 
 const dialSelect: React.CSSProperties = {
@@ -448,8 +445,8 @@ const digitBox = (filled: boolean): React.CSSProperties => ({
   width: '100%', aspectRatio: '1 / 1.2', textAlign: 'center',
   fontSize: 24, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
   color: 'var(--text)', background: filled ? 'var(--brand-soft)' : 'var(--surface-2)',
-  border: `1.5px solid ${filled ? 'var(--line-brand)' : 'var(--line)'}`,
-  borderRadius: 14, outline: 'none', padding: 0,
+  border: `1.5px solid ${filled ? 'var(--line-brand)' : 'var(--line-strong)'}`,
+  borderRadius: 6, outline: 'none', padding: 0,
   transition: 'background .15s, border-color .15s',
 });
 
@@ -477,6 +474,12 @@ const primary = (disabled: boolean): React.CSSProperties => ({
 
 const ghost: React.CSSProperties = {
   ...base, minHeight: 44, background: 'transparent', color: 'var(--text-dim)', fontWeight: 600,
+};
+
+/** The third option, so it reads as an alternative rather than the main act. */
+const secondaryDark: React.CSSProperties = {
+  ...base, background: 'transparent', color: 'var(--text)',
+  border: '1px solid var(--line-strong)', fontWeight: 600,
 };
 
 const linkBtn: React.CSSProperties = {

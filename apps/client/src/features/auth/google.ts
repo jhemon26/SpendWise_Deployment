@@ -126,9 +126,15 @@ export async function renderGoogleButton(
       itp_support: true,
     });
 
-    const paint = (): void => {
-      const w = Math.round(parent.getBoundingClientRect().width);
-      if (w < 40) return;                       // not laid out yet
+    /*
+     * GIS pads beyond the width it is given, so asking for the column width
+     * paints something wider that overhangs the buttons beside it. The overhang
+     * is not documented and not constant, so it is measured and subtracted
+     * rather than guessed at: render, measure, correct once.
+     */
+    const target = (): number => Math.round(parent.getBoundingClientRect().width);
+
+    const draw = (requested: number): void => {
       parent.replaceChildren();
       api.renderButton(parent, {
         type: 'standard',
@@ -136,18 +142,26 @@ export async function renderGoogleButton(
         size: 'large',
         text: 'continue_with',
         shape: 'rectangular',
-        // Left-aligned mark with the label centred — the layout the Apple and
-        // phone buttons now copy, so the three read as one group.
         logo_alignment: 'left',
-        width: Math.min(Math.max(w, 200), 400), // Google clamps at 400
+        width: Math.min(Math.max(requested, 200), 400), // Google clamps at 400
       });
-      // Measured after the frame Google paints into.
+    };
+
+    const paint = (): void => {
+      const want = target();
+      if (want < 40) return;                    // not laid out yet
+      draw(want);
       requestAnimationFrame(() => {
-        const el = parent.firstElementChild as HTMLElement | null;
-        const r = (el ?? parent).getBoundingClientRect();
-        if (r.height > 20 && onMeasured) {
-          onMeasured({ width: Math.round(r.width), height: Math.round(r.height) });
-        }
+        const painted = Math.round(parent.getBoundingClientRect().width);
+        const over = painted - want;
+        // One correction only. A loop here would fight the ResizeObserver.
+        if (over > 1) draw(want - over);
+        requestAnimationFrame(() => {
+          const r = parent.getBoundingClientRect();
+          if (r.height > 20 && onMeasured) {
+            onMeasured({ width: Math.round(r.width), height: Math.round(r.height) });
+          }
+        });
       });
     };
     paint();

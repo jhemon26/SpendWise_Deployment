@@ -201,7 +201,11 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
           {stage === 'choose' && (
             <div style={stack}>
               {GOOGLE_CLIENT_ID && googleReady
-                ? <div ref={googleSlot} style={{ display: 'grid', justifyItems: 'center', minHeight: 44 }} />
+                ? <div ref={googleSlot} style={{
+                    display: 'grid', justifyItems: 'center', minHeight: 44,
+                    // Nothing may paint outside the column, whatever GIS does.
+                    overflow: 'hidden', borderRadius: 4,
+                  }} />
                 : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
               <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} size={row} />
               {soon && (
@@ -376,10 +380,7 @@ interface RowSize { width: number | null; height: number }
  * button sized to the container overhangs the ones beside it by a few pixels —
  * which is what read as a white edge sticking out around the Google row.
  */
-const sizeOf = (s: RowSize): React.CSSProperties => ({
-  minHeight: s.height,
-  ...(s.width ? { width: s.width, justifySelf: 'center' } : {}),
-});
+const sizeOf = (s: RowSize): React.CSSProperties => ({ minHeight: s.height });
 
 /* ── styles ─────────────────────────────────────────────────────────────── */
 

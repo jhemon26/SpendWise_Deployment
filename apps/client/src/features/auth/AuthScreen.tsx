@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
 import { GOOGLE_CLIENT_ID, newNonce, initGoogle, promptGoogle } from './google.js';
+import { Logo } from '../../design-system/Logo.js';
 
 /**
  * Sign-in (ARCHITECTURE §9.1).
@@ -167,7 +168,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
       <div style={glow} aria-hidden="true" />
       <section style={shell}>
         <header style={{ textAlign: 'center' }}>
-          <img src="/icon-192.png" alt="" width={88} height={88} style={mark} />
+          <span style={mark}><Logo size={88} /></span>
           <h1 style={headline}>
             {stage === 'code' ? 'Enter your code'
               : stage === 'phone' ? 'Your mobile number'
@@ -389,7 +390,7 @@ const page: React.CSSProperties = {
 const glow: React.CSSProperties = {
   position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
   width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
-  background: 'radial-gradient(circle, rgba(99,102,241,.30) 0%, rgba(6,182,212,.12) 42%, transparent 70%)',
+  background: 'radial-gradient(circle, rgba(99,102,241,.22) 0%, rgba(168,85,247,.08) 44%, transparent 70%)',
 };
 
 const shell: React.CSSProperties = {
@@ -397,7 +398,7 @@ const shell: React.CSSProperties = {
   display: 'grid', gap: 'var(--s7)',
 };
 
-const mark: React.CSSProperties = { borderRadius: 24, marginBottom: 'var(--s5)' };
+const mark: React.CSSProperties = { display: 'inline-block', marginBottom: 'var(--s5)' };
 
 const headline: React.CSSProperties = {
   fontSize: 32, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.1,

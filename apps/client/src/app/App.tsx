@@ -17,6 +17,7 @@ import { derive, billsFor, fixedCostsTotalMinor } from '../features/insights/sel
 import { seedDemo } from '../features/onboarding/demo.js';
 import { Home, Activity, Budgets, Insights, Profile, type ScreenData, type TxFilter } from './screens.js';
 import { Avatar, greetingFor } from '../design-system/components.js';
+import { Logo } from '../design-system/Logo.js';
 
 type Tab = 'home' | 'activity' | 'budgets' | 'insights' | 'profile';
 
@@ -360,8 +361,7 @@ export function App(): JSX.Element {
         // Same treatment as the sign-in screen, so the handover is invisible.
         background: 'var(--page-bg)',
       }}>
-        <img src="/icon-192.png" alt="" width={56} height={56}
-             style={{ borderRadius: 16, opacity: .9 }} />
+        <Logo size={64} />
       </main>
     );
   }

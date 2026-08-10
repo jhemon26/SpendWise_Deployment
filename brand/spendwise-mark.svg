@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="SpendWise">
+  <!--
+    The mark is the product.
+
+    It is the budget ring from the home screen: how much of the month is gone,
+    with a marker showing where you actually are. Anyone who has used the app
+    recognises it, and anyone who has not still reads "progress" rather than a
+    generic finance glyph.
+
+    Drawn as flat shapes with one gradient so it survives being shrunk to a
+    16px favicon — no text, no thin strokes, nothing that disappears.
+  -->
+  <defs>
+    <linearGradient id="sw-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#sw-bg)"/>
+
+  <!-- The track: the whole month. -->
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="46"/>
+
+  <!-- Spent so far. Starts at twelve o'clock and runs clockwise, like the app's. -->
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#FFFFFF" stroke-width="46"
+          stroke-linecap="round" stroke-dasharray="616 264"
+          transform="rotate(-90 256 256)"/>
+
+  <!-- Where you are today. -->
+  <circle cx="123" cy="299" r="20" fill="#22D3EE"/>
+</svg>

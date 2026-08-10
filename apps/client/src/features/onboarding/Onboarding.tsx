@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { formatMoney, toMinor } from '@spendwise/shared-types';
 import { Icon } from '../../design-system/components.js';
+import { Logo } from '../../design-system/Logo.js';
 
 /**
  * First run (ARCHITECTURE §3.5).
@@ -154,7 +155,7 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {/* ── 0. welcome ─────────────────────────────────────────────── */}
         {step === 0 && (
           <div style={{ ...card, textAlign: 'center', justifyItems: 'center' }}>
-            <img src="/icon-192.png" alt="" width={72} height={72} style={{ borderRadius: 20, marginBottom: 'var(--s3)' }} />
+            <span style={{ marginBottom: 'var(--s3)' }}><Logo size={76} /></span>
             <h1 style={h1}>Welcome to SpendWise</h1>
             <p style={{ ...lede, maxWidth: '28ch' }}>A few quick questions to set up your budget.</p>
             <Footer onNext={next} nextLabel="Get started" skip={onSkip} />
@@ -405,7 +406,7 @@ const page: React.CSSProperties = {
 const glow: React.CSSProperties = {
   position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
   width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
-  background: 'radial-gradient(circle, rgba(99,102,241,.30) 0%, rgba(6,182,212,.12) 42%, transparent 70%)',
+  background: 'radial-gradient(circle, rgba(99,102,241,.22) 0%, rgba(168,85,247,.08) 44%, transparent 70%)',
 };
 const shell: React.CSSProperties = {
   position: 'relative', zIndex: 1, width: 'min(100%, 380px)', display: 'grid', gap: 'var(--s6)',

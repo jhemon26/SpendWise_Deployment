@@ -16,6 +16,12 @@
  * and must be filled in; a notice without an identifiable controller is
  * non-compliant on its face.
  *
+ * There is deliberately no "where it is stored" section. That is only safe
+ * while processing stays in the UK: the moment data is hosted or accessed
+ * outside the UK/EEA, Article 13(1)(f) makes disclosing the transfer and its
+ * safeguard mandatory, and this section has to come back. Hosting region is
+ * currently lon1 (London).
+ *
  * Bump POLICY_VERSION whenever the substance changes. Consent is recorded
  * against the version, so a material change can require re-acceptance instead
  * of silently relying on agreement to an older text.
@@ -53,13 +59,6 @@ export const PRIVACY_SECTIONS: PolicySection[] = [
       'To sign you in and to detect and prevent abuse of the service. Lawful basis: our legitimate interest in keeping accounts secure.',
       'To send a one-time code by SMS when you choose to sign in by phone. Lawful basis: performance of our contract with you.',
       'We do not use your data for advertising, we do not sell it, and we do not use it to make automated decisions about you.',
-    ],
-  },
-  {
-    heading: 'Where it is stored',
-    body: [
-      'Your data is stored on your device first, so the app works offline, and synced to our servers in the United Kingdom.',
-      'Sensitive fields are encrypted at rest, and every account is kept separate from every other.',
     ],
   },
   {

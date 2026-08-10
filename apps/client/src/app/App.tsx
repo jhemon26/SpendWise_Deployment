@@ -55,6 +55,14 @@ export function App(): JSX.Element {
   // Onboarding state is local to the device: a returning user on a new phone
   // should be greeted, not dropped into an empty-looking app.
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem('sw.onboarded') === '1');
+  /*
+   * Has the first sync pull finished?
+   *
+   * Onboarding must not be decided before the account's own data has arrived,
+   * or a second device shows setup for an account that is already set up — and
+   * then writes a duplicate set of categories when the user completes it.
+   */
+  const [syncPrimed, setSyncPrimed] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [welcome, setWelcome] = useState(false);
   const [filter, setFilter] = useState<TxFilter>('all');
@@ -257,7 +265,14 @@ export function App(): JSX.Element {
       engine?.stop();
       engine = null;
     });
-    if (setup) { engine = setup.engine; engine.start(); engine.wake(); }
+    if (setup) {
+      engine = setup.engine;
+      engine.start();
+      // Primed either way: a failed pull must not leave the app stuck deciding.
+      void engine.runOnce().finally(() => setSyncPrimed(true));
+    } else {
+      setSyncPrimed(true);
+    }
   }
 
   /* Mirror settings to the server whenever they change, so a second device
@@ -268,6 +283,21 @@ export function App(): JSX.Element {
     if (!API_BASE || !signedIn || !state.ready) return;
     void saveSettings(auth, API_BASE, settingsOf(useApp.getState()));
   }, [settingsSnapshot, signedIn, state.ready]);
+
+  /*
+   * Being set up is a property of the ACCOUNT, not of this device.
+   *
+   * 'sw.onboarded' lives in localStorage, so signing in on a second device ran
+   * setup again for an account that already had categories — which is what made
+   * a returning user look like a new one, and left duplicate categories behind.
+   * If the account already has categories, it has been set up.
+   */
+  useEffect(() => {
+    if (onboarded || !state.ready) return;
+    if (!state.categories.some((c) => !c.deleted_at)) return;
+    localStorage.setItem('sw.onboarded', '1');
+    setOnboarded(true);
+  }, [onboarded, state.ready, state.categories]);
 
   const now = useMemo(() => new Date(), []);
   // Scheduled fixed costs, not what has been paid — see MonthContext.
@@ -396,6 +426,18 @@ export function App(): JSX.Element {
           })();
         }}
       />
+    );
+  }
+
+  // Wait for the account's data before deciding, or the check above never gets
+  // the chance to run.
+  if (API_BASE && signedIn && !syncPrimed && !onboarded) {
+    return (
+      <main style={{
+        minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--page-bg)',
+      }}>
+        <Logo size={64} />
+      </main>
     );
   }
 

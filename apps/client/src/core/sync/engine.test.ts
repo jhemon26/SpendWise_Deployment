@@ -256,3 +256,18 @@ describe('pull applies categories and banks', () => {
     expect((await db.all('banks')).map((b) => b.name)).toEqual(['Monzo']);
   });
 });
+
+describe('runOnce settles even when the server fails', () => {
+  // App gates the onboarding decision on the first pull completing. If a failed
+  // pull could leave that promise unsettled, a second device would sit on the
+  // splash forever instead of showing the app.
+  it('resolves rather than rejecting when pull throws', async () => {
+    transport.pull = async () => { throw new Error('offline'); };
+    await expect(engine.runOnce()).resolves.toBeUndefined();
+  });
+
+  it('resolves when push throws', async () => {
+    transport.push = async () => { throw new Error('offline'); };
+    await expect(engine.runOnce()).resolves.toBeUndefined();
+  });
+});

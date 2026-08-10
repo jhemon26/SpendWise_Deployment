@@ -8,21 +8,17 @@ import type { Derived } from './selectors.js';
  * £50 over is nothing on a £2,000 budget and a crisis on a £100 one, and a
  * message that ignores that is noise.
  *
- * Plain statements of position, the way a bank writes them. An earlier version
- * was jokey at both ends; on a screen showing someone's actual finances that
- * reads as flippant rather than friendly, and the joke wears out by the third
- * time you see it. Every line now says where you stand and what follows from
- * it.
+ * One line with a bit of character — the way a person would say it, not a
+ * report. Short enough to read at a glance, and it still carries the fact that
+ * matters (the day the money runs out, how far behind the month you are).
  */
 
 export type VerdictTone = 'great' | 'good' | 'steady' | 'warn' | 'bad';
 
 export interface Verdict {
   tone: VerdictTone;
-  /** Bold, coloured. The finding. */
-  headline: string;
-  /** Muted, after a middot. The consequence or the nudge. */
-  detail: string;
+  /** One line. It sits inline under the stats, so it has to fit on one. */
+  line: string;
   icon: VerdictTone;
 }
 
@@ -55,13 +51,12 @@ export function verdictFor(d: Derived, dayToDayMinor: number, monthName: string)
   if (dayToDayMinor <= 0) {
     return {
       tone: 'steady',
-      headline: 'Set a budget',
-      detail: 'this shows your position once one is set',
+      line: 'Set a budget and this tells you how you are doing',
       icon: 'steady',
     };
   }
   if (d.flexSpentMinor === 0 && d.dayOfMonth <= 2) {
-    return { tone: 'steady', headline: 'New month', detail: 'nothing spent yet', icon: 'steady' };
+    return { tone: 'steady', line: 'Clean slate. Nothing spent yet.', icon: 'steady' };
   }
 
   // Positive delta = spent more than the calendar expects by now.
@@ -71,37 +66,33 @@ export function verdictFor(d: Derived, dayToDayMinor: number, monthName: string)
   if (d.leftMinor < 0) {
     return {
       tone: 'bad',
-      headline: 'Over budget',
-      detail: `${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} of ${monthName} remaining`,
+      line: `Budget's gone with ${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} of ${monthName} left`,
       icon: 'bad',
     };
   }
   if (share > 0.15) {
     return {
       tone: 'bad',
-      headline: 'Above plan',
-      detail: outOn ? `funds run out on the ${ordinal(outOn)} at this rate` : 'ahead of where the month should be',
+      line: outOn ? `Steady on — you're out of money by the ${ordinal(outOn)}` : 'Spending well ahead of the month',
       icon: 'bad',
     };
   }
   if (share > 0.04) {
     return {
       tone: 'warn',
-      headline: 'Slightly above plan',
-      detail: outOn ? `funds run out on the ${ordinal(outOn)} at this rate` : 'a little ahead of the month',
+      line: outOn ? `A bit heavy — this lasts until the ${ordinal(outOn)}` : 'A bit ahead of the month',
       icon: 'warn',
     };
   }
   if (share > -0.04) {
-    return { tone: 'steady', headline: 'On plan', detail: 'spending matches the month so far', icon: 'steady' };
+    return { tone: 'steady', line: 'Bang on pace. Nothing to see here.', icon: 'steady' };
   }
   if (share > -0.15) {
-    return { tone: 'good', headline: 'Under budget', detail: 'behind the month, with room to spare', icon: 'good' };
+    return { tone: 'good', line: 'Nicely under. Room to spare.', icon: 'good' };
   }
   return {
     tone: 'great',
-    headline: 'Well under budget',
-    detail: 'well behind the month at this rate',
+    line: 'Barely spending. Saving up for something?',
     icon: 'great',
   };
 }

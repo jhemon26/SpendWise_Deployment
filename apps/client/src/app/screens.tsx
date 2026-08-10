@@ -142,24 +142,15 @@ export function Home({
             ))}
           </div>
 
-          <div style={{
-            marginTop: 'var(--s4)', display: 'flex', alignItems: 'center', gap: 10,
-            padding: 'var(--s3)', borderRadius: 'var(--r-sm)',
-            background: 'rgba(255,255,255,.04)',
-            borderLeft: `3px solid ${verdictColour(v.tone)}`,
+          <p style={{
+            marginTop: 'var(--s3)', display: 'flex', alignItems: 'center', gap: 7,
+            fontSize: 'var(--fs-xs)', fontWeight: 700, color: verdictColour(v.tone),
           }}>
-            <svg viewBox="0 0 24 24" width={22} height={22} aria-hidden
+            <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden
                  style={{ flexShrink: 0 }}
                  dangerouslySetInnerHTML={{ __html: VERDICT_ICON[v.icon] }} />
-            <span style={{ minWidth: 0 }}>
-              <span style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 700, color: verdictColour(v.tone) }}>
-                {v.headline}
-              </span>
-              <span style={{ display: 'block', fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-dim)', marginTop: 2 }}>
-                {v.detail}
-              </span>
-            </span>
-          </div>
+            {v.line}
+          </p>
         </div>
       </div>
 

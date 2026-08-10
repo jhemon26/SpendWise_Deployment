@@ -20,6 +20,8 @@ export interface AddSheetProps {
   baseCurrency: string;
   onClose: () => void;
   onSave: (draft: SaveDraft) => void | Promise<void>;
+  /** Opens the card editor, so an empty list is not a dead end. */
+  onAddBank?: (() => void) | undefined;
   onDelete?: (localId: string) => void | Promise<void>;
 }
 
@@ -47,7 +49,7 @@ function sanitise(raw: string): string {
 }
 
 export function AddSheet({
-  open, editing, categories, banks, derived, baseCurrency, onClose, onSave, onDelete,
+  open, editing, categories, banks, derived, baseCurrency, onClose, onSave, onDelete, onAddBank,
 }: AddSheetProps): JSX.Element | null {
   const flex = useMemo(() => categories.filter((c) => !c.is_fixed && !c.deleted_at), [categories]);
   const fixedCats = useMemo(() => categories.filter((c) => c.is_fixed && !c.deleted_at), [categories]);
@@ -277,11 +279,6 @@ export function AddSheet({
         )}
 
         <p style={labelStyle}>Paid with</p>
-        {banks.filter((b) => !b.deleted_at).length === 0 && (
-          <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, paddingBottom: 'var(--s3)' }}>
-            No cards yet — add one in Profile to track where money goes.
-          </p>
-        )}
         <div role="group" aria-label="Bank or card" style={stripStyle}>
           {banks.filter((b) => !b.deleted_at).map((b) => (
             <button
@@ -307,11 +304,27 @@ export function AddSheet({
               {b.name}
             </button>
           ))}
+          {onAddBank && (
+            <button
+              type="button"
+              onClick={onAddBank}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, padding: '9px 14px',
+                borderRadius: 'var(--r-pill)', cursor: 'pointer', whiteSpace: 'nowrap',
+                fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--brand)',
+                background: 'var(--brand-soft)', border: '1px dashed var(--line-brand)',
+              }}
+            >
+              <svg viewBox="0 0 24 24" width={13} height={13} stroke="currentColor" strokeWidth={2.6}
+                   fill="none" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              Add card
+            </button>
+          )}
         </div>
 
         <input
           aria-label="Where"
-          placeholder={isIncome ? 'Where from? (optional)' : 'Where? (optional)'}
+          placeholder={isIncome ? 'Where from?' : 'Where?'}
           value={merchant}
           onChange={(e) => setMerchant(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && canSave) void submit(); }}

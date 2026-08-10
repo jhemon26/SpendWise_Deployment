@@ -39,7 +39,9 @@ function Scrim({ onClose, centred, children }: {
       aria-modal="true"
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 100,
+        // Above the add sheet (100): the card editor can be opened from it, and
+        // relying on DOM order for that is a trap for the next person.
+        position: 'fixed', inset: 0, zIndex: 110,
         background: 'rgba(3,4,7,.74)', backdropFilter: 'blur(8px)',
         display: 'flex', alignItems: centred ? 'center' : 'flex-end',
         justifyContent: 'center', padding: centred ? 'var(--s5)' : 0,

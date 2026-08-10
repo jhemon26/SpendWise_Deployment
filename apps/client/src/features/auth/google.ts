@@ -14,6 +14,11 @@ const SRC = 'https://accounts.google.com/gsi/client';
 
 interface GoogleCredentialResponse { credential?: string }
 
+interface PromptMoment {
+  isNotDisplayed?: () => boolean;
+  isSkippedMoment?: () => boolean;
+}
+
 interface GoogleIdApi {
   initialize(o: {
     client_id: string;
@@ -25,6 +30,7 @@ interface GoogleIdApi {
     itp_support?: boolean;
   }): void;
   renderButton(parent: HTMLElement, o: Record<string, unknown>): void;
+  prompt(listener?: (n?: PromptMoment) => void): void;
   disableAutoSelect(): void;
 }
 
@@ -78,121 +84,57 @@ export function newNonce(): string {
 }
 
 /**
- * Render Google's own button into `parent`.
+ * Start sign-in from OUR button.
  *
- * An earlier version rendered it off-screen and forwarded clicks from a custom
- * button. That looked better and did not work: GIS may render inside a
- * cross-origin iframe, where querySelector finds nothing, so the forwarded
- * click hit an inert wrapper and nothing happened — a sign-in button that
- * silently does nothing is worse than one that looks slightly off-brand.
+ * Google's rendered button is not used at all. It cannot be sized (its `width`
+ * is a minimum, so it may paint wider), it swaps to a taller personalised
+ * variant for anyone with a Google session unless it is shrunk to `medium`, and
+ * it cannot be restyled — three constraints that between them make it
+ * impossible to line up with the buttons beside it.
  *
- * So this uses the supported path. GIS renders at a FIXED pixel width and will
- * not follow its container, so the width is measured and re-measured.
+ * prompt() opens the browser's credential chooser (FedCM on Chrome, One Tap
+ * elsewhere) and delivers the token to the same callback, so we draw the button
+ * and Google handles the account picking.
+ *
+ * https://developers.google.com/identity/gsi/web/reference/js-reference
  */
-export async function renderGoogleButton(
-  parent: HTMLElement,
+export async function initGoogle(
   nonce: string,
   onToken: (idToken: string) => void,
-  onError: (e: unknown) => void,
-  /**
-   * Reports the height Google actually rendered.
-   *
-   * Both dimensions vary and neither can be dictated. A visitor already signed
-   * in to Google gets the PERSONALISED button — two lines, name over email,
-   * plus a chevron — which is taller than the plain one. And GIS adds its own
-   * padding beyond the requested width, so the painted button is wider than
-   * asked for and overhangs anything sized to match. The caller sizes the other
-   * buttons from what actually landed.
-   */
-  onMeasured?: (size: { width: number; height: number }) => void,
 ): Promise<void> {
-  try {
-    const api = await loadGoogle();
-    api.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      nonce,
-      callback: (r) => {
-        if (r.credential) onToken(r.credential);
-        else onError(new Error('google_no_credential'));
-      },
-      // No silent sign-in: on a shared device that would pick an account for
-      // the user without them choosing.
-      auto_select: false,
-      cancel_on_tap_outside: true,
-      // Chrome has moved this flow to FedCM. Without opting in, the button
-      // renders and personalises but the credential callback can never fire —
-      // which looks exactly like a dead button.
-      use_fedcm_for_prompt: true,
-      itp_support: true,
-    });
+  const api = await loadGoogle();
+  api.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    nonce,
+    callback: (r) => { if (r.credential) onToken(r.credential); },
+    // No silent sign-in: on a shared device that would pick an account without
+    // the user choosing one.
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    use_fedcm_for_prompt: true,
+    itp_support: true,
+  });
+}
 
-    /*
-     * Two documented GIS behaviours drove every earlier attempt at this wrong.
-     *
-     * 1. `width` is the MINIMUM button width, not the exact one — Google's
-     *    reference says so plainly. The button may paint wider, which is the
-     *    overhang that read as a white frame around the row. It cannot be
-     *    dictated, only measured and corrected for.
-     *
-     * 2. The PERSONALISED button ("Continue as <name>" over the email, taller
-     *    and a different shape) is suppressed only when size is `medium` or
-     *    `small`, when type is `icon`, or when width is under 200px. No amount
-     *    of styling or disableAutoSelect() removes it at size `large` — which
-     *    is why it kept coming back.
-     *
-     * So: size `medium` for one predictable button for every visitor, and a
-     * measure-and-correct pass for the width.
-     *
-     * https://developers.google.com/identity/gsi/web/guides/personalized-button
-     * https://developers.google.com/identity/gsi/web/reference/js-reference
-     */
-    const target = (): number => Math.round(parent.getBoundingClientRect().width);
-
-    const draw = (requested: number): void => {
-      parent.replaceChildren();
-      api.renderButton(parent, {
-        type: 'standard',
-        theme: 'outline',
-        // NOT 'large': that is what re-enables the personalised button.
-        size: 'medium',
-        text: 'continue_with',
-        shape: 'rectangular',
-        logo_alignment: 'left',
-        width: Math.min(Math.max(requested, 200), 400), // Google clamps at 400
+/**
+ * Open the chooser. Resolves false when the browser refused to show it —
+ * usually because the user dismissed it too many times, which is a state only
+ * they can clear, so the caller must say so rather than appear broken.
+ */
+export async function promptGoogle(): Promise<boolean> {
+  const api = await loadGoogle();
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (v: boolean): void => { if (!settled) { settled = true; resolve(v); } };
+    try {
+      api.prompt((n?: PromptMoment) => {
+        // Under FedCM several of these are deprecated no-ops, hence the guards.
+        const skipped = typeof n?.isNotDisplayed === 'function' && n.isNotDisplayed();
+        const passed = typeof n?.isSkippedMoment === 'function' && n.isSkippedMoment();
+        if (skipped || passed) done(false);
       });
-    };
-
-    const paint = (): void => {
-      const want = target();
-      if (want < 40) return;                    // not laid out yet
-      draw(want);
-      requestAnimationFrame(() => {
-        const painted = Math.round(parent.getBoundingClientRect().width);
-        const over = painted - want;
-        // One correction only. A loop here would fight the ResizeObserver.
-        if (over > 1) draw(want - over);
-        requestAnimationFrame(() => {
-          // Google's own element, not our wrapper: the wrapper can stretch and
-          // would report a height the button does not actually have.
-          const el = (parent.firstElementChild as HTMLElement | null) ?? parent;
-          const r = el.getBoundingClientRect();
-          if (r.height > 20 && onMeasured) {
-            onMeasured({ width: Math.round(r.width), height: Math.round(r.height) });
-          }
-        });
-      });
-    };
-    paint();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      let last = Math.round(parent.getBoundingClientRect().width);
-      const ro = new ResizeObserver(() => {
-        const w = Math.round(parent.getBoundingClientRect().width);
-        if (Math.abs(w - last) > 4) { last = w; paint(); }
-      });
-      ro.observe(parent);
-    }
-  } catch (e) {
-    onError(e);
-  }
+    } catch { done(false); return; }
+    // No moment callback fires on the happy path, so assume shown.
+    setTimeout(() => done(true), 800);
+  });
 }

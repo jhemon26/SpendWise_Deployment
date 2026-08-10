@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AuthClient } from '../../core/auth/client.js';
 import { isValidPhoneE164, normalizePhoneE164 } from './phone.js';
-import { GOOGLE_CLIENT_ID, newNonce, renderGoogleButton } from './google.js';
+import { GOOGLE_CLIENT_ID, newNonce, initGoogle, promptGoogle } from './google.js';
 
 /**
  * Sign-in (ARCHITECTURE §9.1).
@@ -60,10 +60,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
-  const googleSlot = useRef<HTMLDivElement | null>(null);
-  const [googleReady] = useState(true);
-  // Whatever Google actually painted; every other button matches it exactly.
-  const [row, setRow] = useState<{ width: number | null; height: number }>({ width: null, height: 40 });
+  const [googleUp, setGoogleUp] = useState(true);
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
 
@@ -83,39 +80,32 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  /* Google's own button, rendered in place. It only exists on the chooser, so
-     this waits for that stage rather than for mount. */
+  /* Initialise only — the button below is ours, and prompt() opens Google's
+     chooser when it is tapped. */
   useEffect(() => {
-    if (stage !== 'choose' || !GOOGLE_CLIENT_ID) return;
-    const host = googleSlot.current;
-    if (!host) return;
-    void renderGoogleButton(
-      host,
-      nonce.current,
-      (idToken: string) => {
-        setBusy(true); setError(null);
-        auth.oidcCallback('google', idToken, nonce.current)
-          .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
-          .catch((e: unknown) => {
-            const code = (e as { code?: string }).code ?? 'unknown';
-            // Include the code: "something went wrong" is untriageable, and
-            // this is the one flow we cannot reproduce from here.
-            setError(`${FRIENDLY[code] ?? 'Google sign-in failed.'} (${code})`);
-            setBusy(false);
-          });
-      },
-      (e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`Google sign-in is unavailable (${msg}). Use your mobile number.`);
-      },
-      /* Match Google exactly. A 44px floor here would have made the other two
-         taller than the medium button and reintroduced the mismatch this whole
-         change exists to remove; 36 is Google's own medium height, so it is the
-         floor rather than an ideal. */
-      ({ width, height }) => setRow({ width, height: Math.max(36, height) }),
-    );
+    if (!GOOGLE_CLIENT_ID) return;
+    void initGoogle(nonce.current, (idToken: string) => {
+      setBusy(true); setError(null);
+      auth.oidcCallback('google', idToken, nonce.current)
+        .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
+        .catch((e: unknown) => {
+          const code = (e as { code?: string }).code ?? 'unknown';
+          setError(`${FRIENDLY[code] ?? 'Google sign-in failed.'} (${code})`);
+          setBusy(false);
+        });
+    }).catch(() => setGoogleUp(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage]);
+  }, []);
+
+  async function startGoogle(): Promise<void> {
+    setError(null);
+    const shown = await promptGoogle();
+    if (!shown) {
+      // Chrome suppresses the chooser after repeated dismissals, and only the
+      // user can clear that. Saying so beats looking broken.
+      setError('Google could not open its sign-in window. Allow third-party sign-in for this site, or use your mobile number.');
+    }
+  }
 
   const say = (err: unknown): void => {
     const c = (err as { code?: string }).code ?? '';
@@ -204,23 +194,20 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
 
           {stage === 'choose' && (
             <div style={stack}>
-              {GOOGLE_CLIENT_ID && googleReady
-                ? <div ref={googleSlot} style={{
-                    /* No clipping and no fixed height. overflow:hidden here
-                       cropped the button into a strip once the row height came
-                       from measurement, and the width correction already keeps
-                       it inside the column, so the clip earned nothing. */
-                    display: 'flex', justifyContent: 'center', alignItems: 'center',
-                  }} />
-                : <Provider kind="google" ready={false} onUnavailable={setSoon} />}
-              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} size={row} />
+              <Provider
+                kind="google"
+                ready={Boolean(GOOGLE_CLIENT_ID) && googleUp}
+                onUnavailable={setSoon}
+                onStart={() => { void startGoogle(); }}
+              />
+              <Provider kind="apple" ready={oidcAvailable} onUnavailable={setSoon} />
               {soon && (
                 <p role="status" style={soonNote}>
                   {soon} sign-in is coming soon. Use your mobile number for now.
                 </p>
               )}
               <div style={divider}><i style={rule} /><span>or</span><i style={rule} /></div>
-              <button type="button" onClick={() => setStage('phone')} style={{ ...secondaryDark, ...sizeOf(row) }}>
+              <button type="button" onClick={() => setStage('phone')} style={secondaryDark}>
                 Continue with mobile number
               </button>
             </div>
@@ -334,15 +321,14 @@ function Spinner(): JSX.Element {
  * four-colour G on a light surface, so this one deliberately breaks the dark
  * palette — a recoloured G is a brand violation and reads as a phishing page.
  */
-function Provider({ kind, ready, onUnavailable, onStart, size }: {
+function Provider({ kind, ready, onUnavailable, onStart }: {
   kind: 'google' | 'apple';
   ready: boolean;
   onUnavailable: (name: string) => void;
   onStart?: (() => void) | undefined;
-  size?: RowSize | undefined;
 }): JSX.Element {
   const name = kind === 'google' ? 'Google' : 'Apple';
-  const style = { ...(kind === 'google' ? googleBtn : appleBtn), ...(size ? sizeOf(size) : {}) };
+  const style = kind === 'google' ? googleBtn : appleBtn;
   return (
     <button
       type="button"
@@ -377,8 +363,6 @@ function AppleMark(): JSX.Element {
   );
 }
 
-interface RowSize { width: number | null; height: number }
-
 /**
  * Match Google's painted box exactly.
  *
@@ -386,7 +370,6 @@ interface RowSize { width: number | null; height: number }
  * button sized to the container overhangs the ones beside it by a few pixels —
  * which is what read as a white edge sticking out around the Google row.
  */
-const sizeOf = (s: RowSize): React.CSSProperties => ({ minHeight: s.height });
 
 /* ── styles ─────────────────────────────────────────────────────────────── */
 

@@ -17,7 +17,7 @@ const req = (cookies?: Record<string, string>): Request =>
   ({ cookies } as unknown as Request);
 
 describe('setRefreshCookie', () => {
-  it('is HttpOnly, SameSite=Strict and scoped to the auth path', () => {
+  it('is HttpOnly, SameSite=Lax and scoped to the auth path', () => {
     const r = res();
     setRefreshCookie(r, 'tok', { secure: true, maxAgeDays: 30 });
     const [name, value, opts] = r.cookies[0]!;
@@ -26,8 +26,14 @@ describe('setRefreshCookie', () => {
     expect(value).toBe('tok');
     // HttpOnly is what puts the long-lived credential out of reach of XSS.
     expect(opts['httpOnly']).toBe(true);
-    // SameSite=Strict is the CSRF defence: a cross-site request carries nothing.
-    expect(opts['sameSite']).toBe('strict');
+    /*
+     * Lax, not Strict. Strict withholds the cookie on every cross-site
+     * NAVIGATION, which includes launching an installed PWA from the home
+     * screen — the session then looks expired on open. Lax still withholds it
+     * on cross-site POST, which is the CSRF vector that matters here, and the
+     * refresh call is a same-origin POST.
+     */
+    expect(opts['sameSite']).toBe('lax');
     // No route outside /v1/auth needs it, so no route outside can leak it.
     expect(opts['path']).toBe('/v1/auth');
     expect(opts['secure']).toBe(true);
@@ -40,7 +46,7 @@ describe('setRefreshCookie', () => {
     expect(r.cookies[0]![2]['secure']).toBe(false);
     // …but every other protection stays on.
     expect(r.cookies[0]![2]['httpOnly']).toBe(true);
-    expect(r.cookies[0]![2]['sameSite']).toBe('strict');
+    expect(r.cookies[0]![2]['sameSite']).toBe('lax');
   });
 });
 

@@ -6,8 +6,15 @@ import type { Request, Response } from 'express';
  * The refresh token is the long-lived credential, so on web it must be
  * unreadable by JavaScript: anything script can read, injected script can
  * exfiltrate. HttpOnly puts it out of reach of XSS entirely, at the cost of
- * needing CSRF defence — which SameSite=Strict provides, since a cross-site
- * request then simply does not carry the cookie.
+ * needing CSRF defence — which SameSite provides.
+ *
+ * Lax, not Strict. Strict withholds the cookie on every cross-site navigation,
+ * and launching an installed PWA from the home screen, or arriving from a link
+ * in another app, is one: the session then looks expired on open, which is
+ * exactly the "signed out again after a while" report. Lax still withholds the
+ * cookie on cross-site POST, which is the CSRF vector that matters, and the
+ * refresh call is a same-origin POST so it is unaffected. This is what session
+ * cookies normally use; Strict is for things like a bank transfer confirmation.
  *
  * Native clients do not use this path. They hold the token in Keychain or
  * Keystore and send it in the request body, which is why both routes are
@@ -26,7 +33,7 @@ export function setRefreshCookie(res: Response, token: string, opts: CookieOptio
     httpOnly: true,
     // Only omitted in local development, where there is no TLS to attach to.
     secure: opts.secure,
-    sameSite: 'strict',
+    sameSite: 'lax',
     // Scoped to the refresh endpoint: no other route needs it, so no other
     // route should be able to leak it in a log or an error.
     path: '/v1/auth',
@@ -38,7 +45,8 @@ export function clearRefreshCookie(res: Response, opts: Pick<CookieOptions, 'sec
   res.clearCookie(REFRESH_COOKIE, {
     httpOnly: true,
     secure: opts.secure,
-    sameSite: 'strict',
+    // Must match how it was set, or the browser keeps the original cookie.
+    sameSite: 'lax',
     path: '/v1/auth',
   });
 }

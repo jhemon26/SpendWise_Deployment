@@ -125,6 +125,8 @@ export async function renderGoogleButton(
         size: 'large',
         text: 'continue_with',
         shape: 'rectangular',
+        // Left-aligned mark with the label centred — the layout the Apple and
+        // phone buttons now copy, so the three read as one group.
         logo_alignment: 'left',
         width: Math.min(Math.max(w, 200), 400), // Google clamps at 400
       });

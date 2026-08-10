@@ -336,8 +336,10 @@ function Provider({ kind, ready, onUnavailable, onStart }: {
       style={style}
       aria-label={`Continue with ${name}`}
     >
-      {kind === 'google' ? <GoogleMark /> : <AppleMark />}
-      Continue with {name}
+      <span style={{ position: 'absolute', left: 12, display: 'grid', placeItems: 'center' }}>
+        {kind === 'google' ? <GoogleMark /> : <AppleMark />}
+      </span>
+      <span>Continue with {name}</span>
     </button>
   );
 }
@@ -398,13 +400,13 @@ const subhead: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  padding: 'var(--s5)', borderRadius: 22,
+  padding: 'var(--s5)', borderRadius: 16,
   background: 'var(--surface-2)',
   border: '1px solid var(--line-strong)',
   boxShadow: '0 24px 60px -24px rgba(0,0,0,.75)',
 };
 
-const stack: React.CSSProperties = { display: 'grid', gap: 'var(--s3)' };
+const stack: React.CSSProperties = { display: 'grid', gap: 10 };
 
 const errorBox: React.CSSProperties = {
   display: 'flex', gap: 8, alignItems: 'flex-start',
@@ -451,18 +453,25 @@ const digitBox = (filled: boolean): React.CSSProperties => ({
   transition: 'background .15s, border-color .15s',
 });
 
-// 52px minimum: below ~44px taps start missing on a phone.
+/**
+ * Matched to Google's rendered button, which cannot be restyled.
+ *
+ * Fighting it produced a stack where one button was 50px with a 4px radius and
+ * the next was 72px with an 18px one. Letting it set the metrics — 44px tall,
+ * 4px radius, 14px medium — makes the three read as one control group. 44px is
+ * also the floor for a reliable tap.
+ */
 const base: React.CSSProperties = {
-  width: '100%', minHeight: 52, borderRadius: 'var(--r-md)', border: 0,
-  fontSize: 'var(--fs-md)', fontWeight: 700, cursor: 'pointer',
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+  width: '100%', minHeight: 44, borderRadius: 4, border: 0,
+  fontSize: 14, fontWeight: 500, letterSpacing: '.01em', cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  position: 'relative', padding: '0 12px',
 };
 
 const primary = (disabled: boolean): React.CSSProperties => ({
-  ...base, background: 'var(--brand)', color: '#fff',
-  boxShadow: disabled ? 'none' : '0 8px 22px -10px rgba(99,102,241,.9)',
+  ...base, background: 'var(--brand)', color: '#fff', fontWeight: 600,
   opacity: disabled ? .35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
-  transition: 'opacity .15s ease, box-shadow .15s ease',
+  transition: 'opacity .15s ease',
 });
 
 
@@ -483,15 +492,14 @@ const divider: React.CSSProperties = {
 const rule: React.CSSProperties = { height: 1, background: 'var(--line)' };
 
 const googleBtn: React.CSSProperties = {
-  // White with the four-colour mark: Google's guidelines allow a custom button
-  // but not a recoloured G, and a monochrome one reads as a phishing page.
-  ...base, background: '#FFFFFF', color: '#1F1F1F', fontWeight: 700,
-  border: '1px solid rgba(0,0,0,.08)',
+  ...base, background: '#FFFFFF', color: '#1F1F1F',
+  border: '1px solid #DADCE0',
 };
 
+/** Google's exact border colour and weight, so the two sit as a pair. */
 const appleBtn: React.CSSProperties = {
-  ...base, background: '#FFFFFF', color: '#1F1F1F', fontWeight: 700,
-  border: '1px solid rgba(0,0,0,.08)',
+  ...base, background: '#FFFFFF', color: '#1F1F1F',
+  border: '1px solid #DADCE0',
 };
 
 const soonNote: React.CSSProperties = {

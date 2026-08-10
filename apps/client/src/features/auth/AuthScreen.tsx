@@ -61,7 +61,7 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const googleSlot = useRef<HTMLDivElement | null>(null);
-  const [googleReady, setGoogleReady] = useState(true);
+  const [googleReady] = useState(true);
   // One nonce per mounted screen; the server checks it against the token.
   const nonce = useRef<string>(newNonce());
 
@@ -94,9 +94,18 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
         setBusy(true); setError(null);
         auth.oidcCallback('google', idToken, nonce.current)
           .then((user) => onSignedIn(user.isNewAccount, user.accessToken))
-          .catch((e: unknown) => { say(e); setBusy(false); });
+          .catch((e: unknown) => {
+            const code = (e as { code?: string }).code ?? 'unknown';
+            // Include the code: "something went wrong" is untriageable, and
+            // this is the one flow we cannot reproduce from here.
+            setError(`${FRIENDLY[code] ?? 'Google sign-in failed.'} (${code})`);
+            setBusy(false);
+          });
       },
-      () => setGoogleReady(false),
+      (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(`Google sign-in is unavailable (${msg}). Use your mobile number.`);
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);

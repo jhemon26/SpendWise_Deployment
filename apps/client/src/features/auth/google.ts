@@ -22,6 +22,7 @@ interface GoogleIdApi {
     auto_select?: boolean;
     cancel_on_tap_outside?: boolean;
     use_fedcm_for_prompt?: boolean;
+    itp_support?: boolean;
   }): void;
   renderButton(parent: HTMLElement, o: Record<string, unknown>): void;
   disableAutoSelect(): void;
@@ -107,6 +108,11 @@ export async function renderGoogleButton(
       // the user without them choosing.
       auto_select: false,
       cancel_on_tap_outside: true,
+      // Chrome has moved this flow to FedCM. Without opting in, the button
+      // renders and personalises but the credential callback can never fire —
+      // which looks exactly like a dead button.
+      use_fedcm_for_prompt: true,
+      itp_support: true,
     });
 
     const paint = (): void => {

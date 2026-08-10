@@ -414,12 +414,10 @@ export function App(): JSX.Element {
       </main>
 
       <AddSheet
-        onAddBank={() => setBankEdit(null)}
         open={sheetOpen}
         editing={editing}
         categories={state.categories}
         banks={state.banks}
-        derived={d}
         baseCurrency={state.baseCurrency}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
         onSave={async (draft: SaveDraft) => {

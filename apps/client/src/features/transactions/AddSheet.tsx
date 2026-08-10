@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatMoney, toMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import { Icon } from '../../design-system/components.js';
-import type { Derived } from '../insights/selectors.js';
 
 /**
  * Add / edit a transaction.
@@ -16,12 +15,9 @@ export interface AddSheetProps {
   editing: Transaction | null;
   categories: Category[];
   banks: Bank[];
-  derived: Derived;
   baseCurrency: string;
   onClose: () => void;
   onSave: (draft: SaveDraft) => void | Promise<void>;
-  /** Opens the card editor, so an empty list is not a dead end. */
-  onAddBank?: (() => void) | undefined;
   onDelete?: (localId: string) => void | Promise<void>;
 }
 
@@ -49,7 +45,7 @@ function sanitise(raw: string): string {
 }
 
 export function AddSheet({
-  open, editing, categories, banks, derived, baseCurrency, onClose, onSave, onDelete, onAddBank,
+  open, editing, categories, banks, baseCurrency, onClose, onSave, onDelete,
 }: AddSheetProps): JSX.Element | null {
   const flex = useMemo(() => categories.filter((c) => !c.is_fixed && !c.deleted_at), [categories]);
   const fixedCats = useMemo(() => categories.filter((c) => c.is_fixed && !c.deleted_at), [categories]);
@@ -102,27 +98,6 @@ export function AddSheet({
    */
   const canSave = amountMinor > 0 && (isIncome || categoryId !== null);
   const accent = isIncome ? 'var(--positive)' : (category?.colour ?? 'var(--brand)');
-
-  /* The live consequence. When editing, the original amount is already counted
-     in the month's totals, so it has to be added back before re-subtracting. */
-  const prior = editing && !editing.is_income ? Math.abs(editing.amount_minor) : 0;
-  const leftAfter = derived.leftMinor + prior - (isIncome ? 0 : amountMinor);
-  const perDayAfter = derived.daysLeft > 0 ? Math.round(leftAfter / derived.daysLeft) : leftAfter;
-
-  const impactTone =
-    isIncome ? 'var(--positive)'
-    : leftAfter < 0 ? 'var(--danger)'
-    : perDayAfter < derived.evenPaceMinor * 0.75 ? 'var(--warning)'
-    : 'var(--positive)';
-
-  const impactText = isIncome
-    ? (amountMinor > 0 ? `${formatMoney(amountMinor, baseCurrency)} added to income` : 'Money coming in')
-    : leftAfter < 0
-      ? `${formatMoney(Math.abs(leftAfter), baseCurrency)} over your budget`
-      : `${formatMoney(leftAfter, baseCurrency)} left · ${formatMoney(perDayAfter, baseCurrency)} a day`;
-
-  const catSpent = category ? (derived.byCategory.get(category.local_id) ?? 0) - (editing?.category_id === category.local_id ? prior : 0) : 0;
-  const catLeft = category ? category.limit_minor - catSpent - amountMinor : null;
 
   return (
     <div
@@ -190,19 +165,6 @@ export function AddSheet({
           }} />
         </div>
 
-        <div data-testid="impact" style={{
-          background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
-          padding: 'var(--s3) var(--s4)', marginBottom: 'var(--s4)', minHeight: 62,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3,
-        }}>
-          <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: impactTone }}>{impactText}</p>
-          <p style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--text-dim)' }}>
-            {isIncome ? "Income isn't counted against your day-to-day budget."
-              : catLeft === null ? 'Not tracked against a category budget'
-              : catLeft >= 0 ? `${category!.name}: ${formatMoney(catLeft, baseCurrency)} left of ${formatMoney(category!.limit_minor, baseCurrency)}`
-              : `${category!.name}: ${formatMoney(Math.abs(catLeft), baseCurrency)} over its limit`}
-          </p>
-        </div>
 
         {!isIncome && (
           <>
@@ -278,49 +240,45 @@ export function AddSheet({
           </>
         )}
 
-        <p style={labelStyle}>Paid with</p>
-        <div role="group" aria-label="Bank or card" style={stripStyle}>
-          {banks.filter((b) => !b.deleted_at).map((b) => (
-            <button
-              key={b.local_id}
-              type="button"
-              aria-pressed={bankId === b.local_id}
-              onClick={() => setBankId(b.local_id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, padding: '9px 14px',
-                borderRadius: 'var(--r-pill)', fontSize: 'var(--fs-xs)', fontWeight: 700,
-                whiteSpace: 'nowrap', cursor: 'pointer',
-                border: `1px solid ${bankId === b.local_id ? 'var(--line-strong)' : 'transparent'}`,
-                background: bankId === b.local_id ? 'var(--surface-3)' : 'var(--surface-2)',
-                color: bankId === b.local_id ? 'var(--text)' : 'var(--text-dim)',
-              }}
-            >
-              <i style={{
-                width: 9, height: 9, borderRadius: '50%', background: b.colour, flexShrink: 0,
-                transform: bankId === b.local_id ? 'scale(1.15)' : 'scale(.6)',
-                opacity: bankId === b.local_id ? 1 : 0.5,
-                transition: 'transform .22s cubic-bezier(.2,.9,.25,1), opacity .22s ease',
-              }} />
-              {b.name}
-            </button>
-          ))}
-          {onAddBank && (
-            <button
-              type="button"
-              onClick={onAddBank}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, padding: '9px 14px',
-                borderRadius: 'var(--r-pill)', cursor: 'pointer', whiteSpace: 'nowrap',
-                fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--brand)',
-                background: 'var(--brand-soft)', border: '1px dashed var(--line-brand)',
-              }}
-            >
-              <svg viewBox="0 0 24 24" width={13} height={13} stroke="currentColor" strokeWidth={2.6}
-                   fill="none" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-              Add card
-            </button>
-          )}
-        </div>
+        {banks.filter((b) => !b.deleted_at).length > 0 && (
+          <>
+            <p style={labelStyle}>Paid with</p>
+            {/* Icons only, matching the category rows above. Cards are created
+                and named in Profile; nothing is typed here. */}
+            <div role="group" aria-label="Card" style={stripStyle}>
+              {banks.filter((b) => !b.deleted_at).map((b) => (
+                <button
+                  key={b.local_id}
+                  type="button"
+                  aria-pressed={bankId === b.local_id}
+                  aria-label={b.name}
+                  onClick={() => setBankId(bankId === b.local_id ? null : b.local_id)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                    fontSize: 10, fontWeight: 700, padding: 'var(--s2) 4px', borderRadius: 'var(--r-md)',
+                    minWidth: 60, flexShrink: 0, cursor: 'pointer',
+                    border: `1px solid ${bankId === b.local_id ? 'var(--line-strong)' : 'transparent'}`,
+                    background: bankId === b.local_id ? 'var(--surface-2)' : 'transparent',
+                    color: bankId === b.local_id ? 'var(--text)' : 'var(--text-dim)',
+                  }}
+                >
+                  <span aria-hidden style={{
+                    width: 30, height: 30, borderRadius: 'var(--r-sm)', flexShrink: 0,
+                    display: 'grid', placeItems: 'center', color: '#fff', background: b.colour,
+                  }}>
+                    <svg viewBox="0 0 24 24" width={16} height={16} stroke="currentColor" strokeWidth={2}
+                         fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="6" width="18" height="13" rx="2.5" /><path d="M3 10.5h18" />
+                    </svg>
+                  </span>
+                  <span style={{ maxWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         <input
           aria-label="Where"

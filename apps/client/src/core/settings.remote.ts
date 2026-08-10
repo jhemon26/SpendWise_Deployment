@@ -1,4 +1,3 @@
-import { isPayFrequency } from '@spendwise/shared-types';
 import type { AuthClient } from './auth/client.js';
 import type { Settings } from './store.js';
 
@@ -22,7 +21,6 @@ interface Wire {
   avatar_emoji: string;
   avatar_colour: string;
   monthly_income_minor: number;
-  pay_frequency: string;
 }
 
 const toWire = (s: Settings): Wire => ({
@@ -33,7 +31,6 @@ const toWire = (s: Settings): Wire => ({
   avatar_emoji: s.avatarEmoji,
   avatar_colour: s.avatarColour,
   monthly_income_minor: s.monthlyIncomeMinor,
-  pay_frequency: s.payFrequency,
 });
 
 const fromWire = (w: Wire): Settings => ({
@@ -44,8 +41,6 @@ const fromWire = (w: Wire): Settings => ({
   avatarEmoji: w.avatar_emoji,
   avatarColour: w.avatar_colour,
   monthlyIncomeMinor: w.monthly_income_minor,
-  // Unknown values from an older or newer client fall back rather than throw.
-  payFrequency: isPayFrequency(w.pay_frequency) ? w.pay_frequency : 'monthly',
 });
 
 export async function fetchSettings(

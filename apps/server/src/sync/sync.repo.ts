@@ -34,7 +34,6 @@ export interface UserSettings {
   avatar_emoji: string;
   avatar_colour: string;
   monthly_income_minor: number;
-  pay_frequency: string;
   updated_at: string;
 }
 

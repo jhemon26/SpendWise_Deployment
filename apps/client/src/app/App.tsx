@@ -337,7 +337,9 @@ export function App(): JSX.Element {
   const title: Record<Tab, [string, string]> = {
     home: [
       greetingFor(state.displayName),
-      now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }),
+      // Days left lives here now; the hero card carries the saving goal instead,
+      // so the two are not saying the same thing twice.
+      `${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · ${d.daysLeft} ${dayWord} left`,
     ],
     activity: ['Activity', `${monthTxCount} ${monthTxCount === 1 ? 'transaction' : 'transactions'} this month`],
     budgets: ['Budgets', `${monthLong} · resets in ${d.daysLeft} ${dayWord}`],

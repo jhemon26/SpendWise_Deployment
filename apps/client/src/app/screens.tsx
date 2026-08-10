@@ -56,7 +56,7 @@ const catOf = (cats: Category[], id: string | null): Category | undefined =>
 /* ── Home ─────────────────────────────────────────────────────────────── */
 
 export function Home({
-  transactions, categories, banks, d, currency, dayToDayMinor,
+  transactions, categories, banks, d, currency, dayToDayMinor, savingsTargetMinor,
   now, onEdit, onGoto, monthlyIncomeMinor = 0,
 }: ScreenData): JSX.Element {
   const st = statusOf(d.spentPct);
@@ -142,7 +142,7 @@ export function Home({
           }}>
             {([['Budget', money0(dayToDayMinor, currency)],
                ['Spent', money(d.flexSpentMinor, currency)],
-               ['Days left', String(d.daysLeft)]] as const).map(([k, v]) => (
+               ['Saving goal', savingsTargetMinor > 0 ? money0(savingsTargetMinor, currency) : '—']] as const).map(([k, v]) => (
               <div key={k} style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>
                 <p className="num" style={{ fontSize: 'var(--fs-sm)', fontWeight: 800, marginTop: 4 }}>{v}</p>

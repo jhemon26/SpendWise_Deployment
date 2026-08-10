@@ -23,7 +23,7 @@ export function Icon({
       style={{
         width: size,
         height: size,
-        borderRadius: size >= 40 ? 'var(--r-md)' : 9,
+        borderRadius: size >= 40 ? 'var(--r-md)' : 'var(--r-sm)',
         display: 'grid',
         placeItems: 'center',
         flexShrink: 0,

@@ -79,7 +79,7 @@ export function Home({
       <div style={{
         position: 'relative', overflow: 'hidden', background: 'var(--hero-bg)',
         border: '1px solid var(--line-brand)', borderRadius: 'var(--r-xl)',
-        padding: 'var(--s4)', boxShadow: '0 16px 36px -14px rgba(0,0,0,.7)',
+        padding: 'var(--s4)', boxShadow: '0 16px 36px -14px rgba(0,0,0,.55)',
       }}>
         {/* Brand bloom in the top-right corner, as in the prototype. */}
         <div aria-hidden style={{
@@ -797,7 +797,7 @@ function Section({ title, count, onAdd, children }: {
           <h2 style={{ fontSize: 'var(--fs-md)', fontWeight: 700, letterSpacing: '-.02em' }}>{title}</h2>
           <span className="num" style={{
             fontSize: 'var(--fs-2xs)', fontWeight: 800, color: 'var(--text-muted)',
-            background: 'var(--surface-2)', borderRadius: 999, padding: '2px 8px',
+            background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', padding: '2px 8px',
           }}>{count}</span>
           <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden stroke="currentColor" strokeWidth={2.4}
                fill="none" strokeLinecap="round" strokeLinejoin="round"

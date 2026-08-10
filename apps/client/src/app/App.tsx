@@ -529,7 +529,7 @@ export function App(): JSX.Element {
             /* A squircle, not a circle: the tri-colour gradient and halo read
                as a toy next to the rest of the app. One brand colour, one soft
                shadow, and the shape the tab icons already use. */
-            width: 54, height: 54, borderRadius: 18, justifySelf: 'center', border: 0,
+            width: 54, height: 54, borderRadius: 'var(--r-md)', justifySelf: 'center', border: 0,
             background: 'var(--brand)',
             color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer',
             boxShadow: '0 10px 24px -10px rgba(99,102,241,.95)',

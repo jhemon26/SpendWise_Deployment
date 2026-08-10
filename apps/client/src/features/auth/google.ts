@@ -135,6 +135,17 @@ export async function renderGoogleButton(
     const target = (): number => Math.round(parent.getBoundingClientRect().width);
 
     const draw = (requested: number): void => {
+      /*
+       * Ask Google to forget the remembered session before drawing.
+       *
+       * With one, GIS renders the PERSONALISED button — name over email plus a
+       * chevron — which is a different size and shape from the plain one and is
+       * what will not line up with the buttons beside it. This is the only lever
+       * Google exposes over that; if the personalised button still appears, the
+       * rendered button cannot be made to match and it has to be replaced with
+       * our own via the redirect flow.
+       */
+      try { api.disableAutoSelect(); } catch { /* older SDK: nothing to clear */ }
       parent.replaceChildren();
       api.renderButton(parent, {
         type: 'standard',

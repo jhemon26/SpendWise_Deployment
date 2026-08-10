@@ -10,15 +10,24 @@
 :root {
   /* Surfaces.
 
-     Deep navy. Tried against neutral graphite and a plum variant; this one
-     stays.
+     The base is the LEAST saturated thing on screen, and the only value here
+     that changed.
 
-     The original #06070a was effectively pure black while every surface above
-     it was blue-slate, so cards read as pale boxes on a void rather than panels
-     raised off a material. The steps here are even (roughly +6 lightness), so
-     elevation is legible without borders carrying it alone, and the whole stack
-     shares one hue. Charcoal-navy is also what Monzo, N26 and Revolut use. */
-  --bg: #0a0e1a;
+     Measured, after navy, graphite and plum all read wrong. The cards sit at
+     37% saturation; navy was 44% — more saturated than the surfaces above it —
+     so the background was the most colourful element in the app and everything
+     read as "blue". Graphite went to 11%, too far the other way, and the cards
+     looked pasted onto an unrelated grey. In a dark UI saturation should rise
+     with elevation, not fall.
+
+     This is the card hue (224) at 25% saturation, below the cards' 37%, and 7%
+     lightness — a 5-point step under --surface, inside the 5-8% Material
+     recommends for a legible elevation change. Same family as GitHub's #0d1117
+     and Tailwind slate-950, which is the shape most professional dark UIs land
+     on.
+
+     Surfaces, gradients and card styles are untouched. */
+  --bg: #0d1016;
   --surface: #141a2b;
   --surface-2: #1c2338;
   --surface-3: #263049;
@@ -63,7 +72,7 @@
   --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
 
   --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
-  --page-bg: radial-gradient(120% 80% at 50% -10%, #232c4a 0%, #141a2b 40%, #0a0e1a 78%);
+  --page-bg: radial-gradient(120% 80% at 50% -10%, #232c4a 0%, #141a2b 40%, #0d1016 78%);
 }
 
 

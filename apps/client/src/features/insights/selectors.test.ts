@@ -360,3 +360,51 @@ describe('fixed vs day-to-day classification', () => {
     expect(Math.round(d.fixedSharePct)).toBe(75);
   });
 });
+
+describe('month length and days left', () => {
+  const ctx = { dayToDayMinor: 100000, savingsTargetMinor: 0 };
+
+  it('counts today as remaining', () => {
+    // 10 August, a 31-day month: the 10th through the 31st is 22 days.
+    const d = derive([], [], { ...ctx, now: new Date('2026-08-10T12:00:00') });
+    expect(d.daysInMonth).toBe(31);
+    expect(d.daysLeft).toBe(22);
+  });
+
+  it('gets February right in a leap year', () => {
+    // Derived from the calendar, not a lookup table, so this cannot drift.
+    const leap = derive([], [], { ...ctx, now: new Date('2028-02-10T12:00:00') });
+    expect(leap.daysInMonth).toBe(29);
+    expect(leap.daysLeft).toBe(20);
+  });
+
+  it('gets February right in a common year', () => {
+    const common = derive([], [], { ...ctx, now: new Date('2027-02-10T12:00:00') });
+    expect(common.daysInMonth).toBe(28);
+    expect(common.daysLeft).toBe(19);
+  });
+
+  it('handles the century rule', () => {
+    // 2100 is divisible by 4 but not a leap year; a naive %4 check fails here.
+    const y2100 = derive([], [], { ...ctx, now: new Date('2100-02-10T12:00:00') });
+    expect(y2100.daysInMonth).toBe(28);
+    const y2000 = derive([], [], { ...ctx, now: new Date('2000-02-10T12:00:00') });
+    expect(y2000.daysInMonth).toBe(29);
+  });
+
+  it('never reports zero days left on the last day', () => {
+    // perDayMinor divides by daysLeft, so a zero here would be a division by
+    // zero on the 31st of every month.
+    for (const iso of ['2026-01-31T12:00:00', '2026-04-30T12:00:00', '2026-02-28T12:00:00']) {
+      const d = derive([], [], { ...ctx, now: new Date(iso) });
+      expect(d.daysLeft, iso).toBe(1);
+      expect(Number.isFinite(d.perDayMinor), iso).toBe(true);
+    }
+  });
+
+  it('short months mean a bigger daily allowance for the same budget', () => {
+    const feb = derive([], [], { ...ctx, now: new Date('2027-02-01T12:00:00') });
+    const jan = derive([], [], { ...ctx, now: new Date('2027-01-01T12:00:00') });
+    expect(feb.perDayMinor).toBeGreaterThan(jan.perDayMinor);
+  });
+});

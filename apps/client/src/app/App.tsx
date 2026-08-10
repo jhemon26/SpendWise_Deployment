@@ -55,6 +55,7 @@ export function App(): JSX.Element {
   // should be greeted, not dropped into an empty-looking app.
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem('sw.onboarded') === '1');
   const [showTour, setShowTour] = useState(false);
+  const [welcome, setWelcome] = useState(false);
   const [filter, setFilter] = useState<TxFilter>('all');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -522,7 +523,60 @@ export function App(): JSX.Element {
         />
       )}
 
-      {showTour && <Tour onDone={() => { setShowTour(false); localStorage.setItem('sw.tour', '1'); }} />}
+      {showTour && (
+        <Tour onDone={() => {
+          setShowTour(false);
+          localStorage.setItem('sw.tour', '1');
+          setWelcome(true);
+        }} />
+      )}
+
+      {/* Shown once, after the tour ends. Setup and a walkthrough back to back
+          is a lot to absorb, and finishing on "you are set up" is worth more
+          than dropping straight into an app you have only just been shown. */}
+      {welcome && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Setup complete"
+          onClick={() => setWelcome(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 120, display: 'grid', placeItems: 'center',
+            padding: 'var(--s5)', background: 'rgba(5,7,14,.76)', backdropFilter: 'blur(8px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(100%, 340px)', textAlign: 'center',
+              background: 'var(--surface)', border: '1px solid var(--line-strong)',
+              borderRadius: 'var(--r-xl)', padding: 'var(--s6) var(--s5)',
+              boxShadow: 'var(--shadow)',
+            }}
+          >
+            <div style={{ display: 'grid', placeItems: 'center', marginBottom: 'var(--s4)' }}>
+              <Logo size={56} />
+            </div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.03em' }}>
+              {state.displayName.trim() ? `You're set, ${state.displayName.trim()}` : "You're all set"}
+            </h2>
+            <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 'var(--s2)' }}>
+              Add a spend with the + button whenever you pay for something.
+            </p>
+            <button
+              type="button"
+              onClick={() => setWelcome(false)}
+              style={{
+                width: '100%', minHeight: 48, marginTop: 'var(--s5)', border: 0,
+                borderRadius: 'var(--r-md)', background: 'var(--brand)', color: '#fff',
+                fontSize: 'var(--fs-md)', fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Start
+            </button>
+          </div>
+        </div>
+      )}
 
       <nav aria-label="Main" data-tour="tabs" style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30, height: 84, paddingBottom: 12,

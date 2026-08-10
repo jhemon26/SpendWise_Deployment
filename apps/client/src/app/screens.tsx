@@ -159,8 +159,8 @@ export function Home({
             display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--s2)',
             marginTop: 'var(--s4)', paddingTop: 'var(--s3)', borderTop: '1px solid var(--line)',
           }}>
-            {([['Budget', money0(dayToDayMinor, currency), false],
-               ['Spent', money(d.flexSpentMinor, currency), false],
+            {([['Budget', money0(dayToDayMinor + d.committedFixedMinor, currency), false],
+               ['Spent', money(d.monthTotalMinor, currency), false],
                ['Saving goal', savingsTargetMinor > 0 ? money0(savingsTargetMinor, currency) : '—', true]] as const).map(([k, v, piggy]) => (
               <div key={k} style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{k}</p>

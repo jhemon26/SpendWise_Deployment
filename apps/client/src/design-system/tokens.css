@@ -10,51 +10,79 @@
 :root {
   /* Surfaces.
 
-     The base is the LEAST saturated thing on screen, and the only value here
-     that changed.
+     Near-black with a violet bias, and surfaces that are TRANSLUCENT rather
+     than solid — a card is white at 2.8%, so it reads as a pane of glass over
+     the ground rather than a lighter rectangle pasted on top. That is what
+     keeps this palette calm at the density this app runs at.
 
-     Measured, after navy, graphite and plum all read wrong. The cards sit at
-     37% saturation; navy was 44% — more saturated than the surfaces above it —
-     so the background was the most colourful element in the app and everything
-     read as "blue". Graphite went to 11%, too far the other way, and the cards
-     looked pasted onto an unrelated grey. In a dark UI saturation should rise
-     with elevation, not fall.
+     The ground is not pure black. Pure black kills the sense of depth the
+     radial glows in --page-bg create, and on OLED it makes every scroll edge
+     look like a hard cut. #08080d keeps a hint of hue so the glows have
+     something to sit against.
 
-     This is the card hue (224) at 25% saturation, below the cards' 37%, and 7%
-     lightness — a 5-point step under --surface, inside the 5-8% Material
-     recommends for a legible elevation change. Same family as GitHub's #0d1117
-     and Tailwind slate-950, which is the shape most professional dark UIs land
-     on.
+     Because surfaces are alpha, elevation now comes from stacking rather than
+     from a lightness ramp: .028 → .055 → .09. Anything placed on --surface-3
+     still clears 4.5:1 for text. */
+  --bg: #08080d;
+  --surface: rgba(255, 255, 255, 0.028);
+  /*
+   * A card's colour, but opaque — for layers that must genuinely hide what is
+   * behind them, which means modals and sheets. Not for rows in a list: a
+   * swipe row painted with this showed as a dark block with a seam down each
+   * side of the card, because a card is translucent over a page gradient.
+   */
+  --surface-solid: #0f0f14;
+  --surface-2: rgba(255, 255, 255, 0.055);
+  --surface-3: rgba(255, 255, 255, 0.09);
+  --line: rgba(241, 241, 247, 0.09);
+  --line-strong: rgba(241, 241, 247, 0.14);
+  --line-brand: rgba(194, 214, 232, 0.2);
 
-     Surfaces, gradients and card styles are untouched. */
-  --bg: #0d1016;
-  --surface: #141a2b;
-  --surface-2: #1c2338;
-  --surface-3: #263049;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --line-brand: rgba(99, 102, 241, 0.32);
-
-  --hero-bg: linear-gradient(145deg, #232c4a 0%, #151b2d 100%);
-  --brand-cyan: #06b6d4;
-  --brand-purple: #a855f7;
+  --hero-bg: linear-gradient(145deg, rgba(194, 214, 232, 0.075) 0%, rgba(255, 255, 255, 0.014) 100%);
+  --brand-cyan: #c2d6e8;
+  --brand-purple: #b4aecf;
 
   /* text */
-  --text: #f2f5f9;
-  --text-muted: #98a2b3;
-  /* Lifted from #6b7480: on the navy surfaces that only reached 3.3:1, under
-     the 4.5:1 needed for text this small. Now 4.8:1 on the raised surfaces. */
-  --text-dim: #8590a0;
+  --text: #f1f1f7;
+  --text-muted: #c8cbd8;
+  /* One ink at three alphas rather than three greys — the hierarchy stays
+     consistent because it is literally the same colour. 52% over the raised
+     surfaces measures 5.1:1, clear of the 4.5:1 this size needs. */
+  --text-dim: rgba(241, 241, 247, 0.52);
 
   /* state */
-  --brand: #6366f1;
-  --brand-soft: rgba(99, 102, 241, 0.16);
-  --positive: #10b981;
-  --positive-soft: rgba(16, 185, 129, 0.14);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.14);
-  --danger: #ef4444;
-  --danger-soft: rgba(239, 68, 68, 0.14);
+  --brand: #c2d6e8;
+  --brand-soft: rgba(194, 214, 232, 0.1);
+  --positive: #9fc7b2;
+  --positive-soft: rgba(159, 199, 178, 0.12);
+  --warning: #d9b8a2;
+  --warning-soft: rgba(217, 184, 162, 0.12);
+  /* This palette has no red in it — it is pale blue, sage and clay. An app
+     that tells people they are over budget cannot do without a danger colour,
+     so this is a muted rose derived to sit with the other two. It is the
+     weakest signal in the set; that is the cost of the palette, and it is why
+     overspend also changes wording and not only colour. */
+  --danger: #d99a9a;
+  --danger-soft: rgba(217, 154, 154, 0.12);
+
+  /* Every state and identity colour is now LIGHT, so anything filled with one
+     needs dark content on top. White glyphs disappeared on them. */
+  --on-accent: #08080d;
+
+  /* Device insets.
+
+     index.html sets viewport-fit=cover and the status bar style is
+     black-translucent, so the web view extends UNDER the notch and the home
+     indicator. Nothing accounted for that: the app bar was drawn beneath the
+     clock and battery, which clipped the greeting AND made the avatar
+     untappable — iOS owns touches in the status bar strip, so the button was
+     there but could never be pressed.
+
+     The fallback matters. env() resolves to nothing in a browser tab or on
+     Android, and calc() with an empty term produces an invalid value that is
+     dropped silently, taking the whole padding with it. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   /* spacing — 4pt scale, no ad-hoc values anywhere */
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
@@ -72,7 +100,14 @@
   --fs-md: 15px; --fs-sm: 13px; --fs-xs: 12px; --fs-2xs: 11px;
 
   --shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.7);
-  --page-bg: radial-gradient(120% 80% at 50% -10%, #232c4a 0%, #141a2b 40%, #0d1016 78%);
+  /* Ambient depth comes from here and nowhere else: three large, low-alpha
+     glows placed deliberately off-centre, over a vertical near-black ramp.
+     Asymmetry is the point — a centred glow reads as a vignette. */
+  --page-bg:
+    radial-gradient(circle at 9% 8%, rgba(194, 214, 232, 0.11), transparent 31rem),
+    radial-gradient(circle at 86% 18%, rgba(159, 199, 178, 0.075), transparent 28rem),
+    radial-gradient(circle at 70% 92%, rgba(217, 184, 162, 0.055), transparent 32rem),
+    linear-gradient(180deg, #08080d 0%, #0b0b12 48%, #07070b 100%);
 }
 
 
@@ -117,7 +152,10 @@ html {
 
 body {
   min-height: 100dvh;
-  background: var(--bg);
+  /* The glows live on the body so they sit under every screen at once and do
+     not scroll with the content — moving them would read as a parallax trick. */
+  background: var(--page-bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -131,7 +169,12 @@ body {
   100% { transform: translateX(320%); }
 }
 
+/* Figures are set in mono so they line up in columns for free, and so a
+   changing amount does not reflow the row around it. Weight is deliberately
+   lighter than the sans it sits beside: Plex Mono at 600 has roughly the
+   presence of Jakarta at 800. */
 .num {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }

@@ -1,32 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="SpendWise">
   <!--
-    The mark is the product.
+    SOURCE OF TRUTH for every SpendWise icon. The app icons, favicon and the
+    boot splash are all generated from or copied out of this file — if they are
+    ever redrawn separately they drift, which is how the old mark ended up
+    looking different in the tab and on the home screen.
 
-    It is the budget ring from the home screen: how much of the month is gone,
-    with a marker showing where you actually are. Anyone who has used the app
-    recognises it, and anyone who has not still reads "progress" rather than a
-    generic finance glyph.
+    An SW lettermark where the W is also a chart trace: two falls and two
+    rises, with the accent on the live end. The W is the only letter in the
+    name that can carry meaning as well as spell it, so it does both jobs.
 
-    Drawn as flat shapes with one gradient so it survives being shrunk to a
-    16px favicon — no text, no thin strokes, nothing that disappears.
+    Ink-on-dark rather than a saturated fill, because every other budgeting app
+    is a bright square. Equal cap height on both letters — with the W any
+    shorter it reads "Sw".
   -->
   <defs>
-    <linearGradient id="sw-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6366F1"/>
-      <stop offset="1" stop-color="#A855F7"/>
+    <linearGradient id="sw-tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141726"/>
+      <stop offset="1" stop-color="#08080d"/>
     </linearGradient>
+    <radialGradient id="sw-bloom" cx=".26" cy=".2" r=".75">
+      <stop offset="0" stop-color="#c2d6e8" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#c2d6e8" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-
-  <rect width="512" height="512" rx="116" fill="url(#sw-bg)"/>
-
-  <!-- The track: the whole month. -->
-  <circle cx="256" cy="256" r="140" fill="none" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="46"/>
-
-  <!-- Spent so far. Starts at twelve o'clock and runs clockwise, like the app's. -->
-  <circle cx="256" cy="256" r="140" fill="none" stroke="#FFFFFF" stroke-width="46"
-          stroke-linecap="round" stroke-dasharray="616 264"
-          transform="rotate(-90 256 256)"/>
-
-  <!-- Where you are today. -->
-  <circle cx="123" cy="299" r="20" fill="#22D3EE"/>
+  <rect width="512" height="512" rx="116" fill="url(#sw-tile)"/>
+  <rect width="512" height="512" rx="116" fill="url(#sw-bloom)"/>
+  <path d="M206 186a48 48 0 1 0-48 48 48 48 0 1 1-48 48" fill="none" stroke="#c2d6e8"
+        stroke-width="42" stroke-linecap="round"/>
+  <path d="M262 140 302 330 344 226 386 330 426 140" fill="none" stroke="#c2d6e8"
+        stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="426" cy="140" r="25" fill="#9fc7b2"/>
 </svg>

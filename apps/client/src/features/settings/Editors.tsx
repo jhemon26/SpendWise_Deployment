@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Bank, Category } from '@spendwise/shared-types';
+import type { Bank, Category, Recurrence } from '@spendwise/shared-types';
 import { toMinor, fromMinor, formatMoney } from '@spendwise/shared-types';
-import { ICON_KEYS, ICONS } from '../../design-system/icons.js';
+import { COLOUR_ICONS, ICON_KEYS } from '../../design-system/icons.colour.js';
 import { Avatar } from '../../design-system/components.js';
 import { AVATAR_KEYS, SVG_PREFIX } from '../../design-system/avatars.js';
 
@@ -15,10 +15,8 @@ import { AVATAR_KEYS, SVG_PREFIX } from '../../design-system/avatars.js';
  * a later screen to cope with it.
  */
 
-const PALETTE = [
-  '#8B5CF6', '#6366F1', '#14B8A6', '#FB923C', '#EC4899', '#22D3EE',
-  '#EAB308', '#94A3B8', '#64748B', '#10B981', '#F472B6', '#38BDF8',
-];
+/* The picker offers the translated palette, so what you choose is what you see. */
+import { PALETTE } from '../../design-system/hues.js';
 
 /* ── shell ─────────────────────────────────────────────────────────────── */
 
@@ -55,10 +53,35 @@ function Scrim({ onClose, centred, children }: {
           border: centred ? '1px solid var(--line-strong)' : undefined,
           borderTop: centred ? undefined : '1px solid var(--line-strong)',
           borderRadius: centred ? 'var(--r-xl)' : 'var(--r-xl) var(--r-xl) 0 0',
-          padding: centred ? 'var(--s5)' : 'var(--s3) var(--s5) var(--s6)',
-          maxHeight: '92%', overflowY: 'auto',
+          // A bottom sheet reaches the bottom edge, so its last control lands on
+          // the home indicator without the inset. A centred dialog floats and
+          // does not need one.
+          padding: centred
+            ? 'var(--s5)'
+            : 'var(--s3) var(--s5) calc(var(--safe-bottom) + var(--s6))',
+          maxHeight: '92%', overflowY: 'auto', position: 'relative',
         }}
       >
+        {/*
+          Close in the corner, for every editor at once.
+          
+          These each carried a full-width "Cancel" beside Save — the least
+          wanted action in the easiest place to reach, and a different habit
+          from the add sheet. One control, one position, one habit.
+        */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position: 'absolute', top: centred ? 'var(--s4)' : 'var(--s3)', right: 'var(--s4)',
+            width: 32, height: 32, display: 'grid', placeItems: 'center', borderRadius: 999,
+            border: 0, background: 'var(--surface-2)', color: 'var(--text-dim)', cursor: 'pointer',
+          }}
+        >
+          <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor"
+               strokeWidth={2.4} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
         {!centred && <div style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--line-strong)', margin: '0 auto var(--s4)' }} />}
         {children}
       </div>
@@ -79,9 +102,10 @@ const field: React.CSSProperties = {
   borderRadius: 'var(--r-md)', padding: '12px var(--s4)',
   fontSize: 'var(--fs-sm)', fontWeight: 600, outline: 'none', color: 'var(--text)',
 };
-const btnRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s2)', marginTop: 'var(--s4)' };
+/* One button now that Cancel lives in the corner. */
+const btnRow: React.CSSProperties = { display: 'grid', gap: 'var(--s2)', marginTop: 'var(--s4)' };
 const primary: React.CSSProperties = {
-  width: '100%', background: 'var(--brand)', color: '#fff', padding: 15,
+  width: '100%', background: 'var(--brand)', color: 'var(--on-accent)', padding: 15,
   borderRadius: 'var(--r-md)', border: 0, fontSize: 'var(--fs-md)', fontWeight: 800, cursor: 'pointer',
 };
 const ghost: React.CSSProperties = {
@@ -135,7 +159,6 @@ export function ValueEditor({ edit, onClose }: { edit: ValueEdit; onClose: () =>
         </p>
       )}
       <div style={btnRow}>
-        <button type="button" style={ghost} onClick={onClose}>Cancel</button>
         <button type="button" style={{ ...primary, opacity: valid ? 1 : .35, cursor: valid ? 'pointer' : 'not-allowed' }} disabled={!valid} onClick={save}>Save</button>
       </div>
     </Scrim>
@@ -147,7 +170,14 @@ export function ValueEditor({ edit, onClose }: { edit: ValueEdit; onClose: () =>
 export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
   cat: Category | null;
   currency: string;
-  onSave: (patch: { local_id?: string; name: string; icon: string; colour: string; limit_minor: number; is_fixed: boolean; due_day: number | null }) => void;
+  onSave: (patch: {
+    local_id?: string; name: string; icon: string; colour: string;
+    limit_minor: number; is_fixed: boolean; due_day: number | null;
+    /** What this category IS: spending, a dated bill, or an undated goal. */
+    kind: 'flow' | 'bill' | 'goal';
+    /* Only sent where they mean something. */
+    recurrence?: Recurrence; installments?: number | null;
+  }) => void;
   onDelete?: (localId: string) => void;
   onClose: () => void;
 }): JSX.Element {
@@ -155,8 +185,26 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
   const [icon, setIcon] = useState(cat?.icon ?? 'other');
   const [colour, setColour] = useState(cat?.colour ?? PALETTE[1]!);
   const [limit, setLimit] = useState(cat ? String(fromMinor(cat.limit_minor, currency)) : '');
-  const [fixed, setFixed] = useState(cat?.is_fixed ?? false);
+  /*
+   * Three kinds, not two.
+   *
+   * A saving goal is a commitment in every way that matters — money that has
+   * to be held back before anything is safe to spend — it simply has no date
+   * attached. Without this it could not be created at all, and the £500
+   * someone meant to save was quietly offered back as spending money.
+   */
+  type Kind = 'flow' | 'bill' | 'goal';
+  const [kind, setKind] = useState<Kind>(
+    cat?.pot_kind === 'goal' ? 'goal' : cat?.is_fixed ? 'bill' : 'flow',
+  );
+  const fixed = kind !== 'flow';
   const [dueDay, setDueDay] = useState(cat?.due_day ? String(cat.due_day) : '');
+  /* How often the bill itself falls due — nothing to do with how often the
+     person is paid. Asked first, because it decides how many paydays there
+     are to split it across. */
+  const [recurrence, setRecurrence] = useState<Recurrence>(cat?.recurrence ?? 'monthly');
+  /* null = "spread it as far as it will go", which is the gentler default. */
+  const [installments, setInstallments] = useState<number | null>(cat?.installments ?? null);
 
   let limitMinor = 0;
   let limitOk = true;
@@ -173,7 +221,10 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
       <input style={field} value={name} maxLength={24} placeholder="Category name"
              aria-label="Category name" onChange={(e) => setName(e.target.value)} />
 
-      <p style={label}>Monthly limit</p>
+      {/* Generic on purpose: this editor has no cycle object in scope, and
+          the limit refills every pay cycle, not necessarily every month —
+          see flows.ts. */}
+      <p style={label}>Limit each cycle</p>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
         <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-dim)' }}>
           {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
@@ -183,7 +234,7 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
           onChange={(e) => setLimit(e.target.value)}
           inputMode="decimal"
           placeholder="0"
-          aria-label="Monthly limit"
+          aria-label="Limit each cycle"
           style={{
             background: 'none', border: 0, outline: 'none', padding: 0, color: 'var(--text)',
             fontSize: 28, fontWeight: 800, letterSpacing: '-.04em',
@@ -198,25 +249,42 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
       )}
 
       <p style={label}>Type</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, background: 'var(--surface-2)', borderRadius: 'var(--r-pill)', padding: 3 }}>
-        {([[false, 'Day-to-day'], [true, 'Fixed cost']] as const).map(([val, text]) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 3, background: 'var(--surface-2)', borderRadius: 'var(--r-pill)', padding: 3 }}>
+        {([['flow', 'Day-to-day'], ['bill', 'Fixed cost'], ['goal', 'Saving goal']] as const).map(([val, text]) => (
           <button
             key={text}
             type="button"
-            aria-pressed={fixed === val}
-            onClick={() => setFixed(val)}
+            aria-pressed={kind === val}
+            onClick={() => setKind(val)}
             style={{
               fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '8px 0', border: 0, cursor: 'pointer',
               borderRadius: 'var(--r-pill)',
-              background: fixed === val ? 'var(--surface-3)' : 'transparent',
-              color: fixed === val ? 'var(--text)' : 'var(--text-dim)',
+              background: kind === val ? 'var(--surface-3)' : 'transparent',
+              color: kind === val ? 'var(--text)' : 'var(--text-dim)',
             }}
           >{text}</button>
         ))}
       </div>
 
-      {fixed && (
+      {kind === 'bill' && (
         <>
+          <p style={label}>How often is it due?</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: 4,
+                        background: 'var(--surface-2)', borderRadius: 'var(--r-pill)' }}>
+            {([['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['annual', 'Yearly']] as const).map(([k, t]) => (
+              <button
+                key={k} type="button" aria-pressed={recurrence === k}
+                onClick={() => setRecurrence(k)}
+                style={{
+                  padding: '10px 0', borderRadius: 'var(--r-pill)', border: 0, cursor: 'pointer',
+                  fontSize: 'var(--fs-sm)', fontWeight: 800,
+                  background: recurrence === k ? 'var(--brand)' : 'transparent',
+                  color: recurrence === k ? 'var(--on-accent)' : 'var(--text-dim)',
+                }}
+              >{t}</button>
+            ))}
+          </div>
+
           <p style={label}>Due day of the month</p>
           <input style={field} value={dueDay} inputMode="numeric" placeholder="e.g. 15"
                  aria-label="Due day" onChange={(e) => setDueDay(e.target.value)} />
@@ -225,6 +293,43 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
               Use a day between 1 and 31.
             </p>
           )}
+        </>
+      )}
+
+      {/* Both a bill and a goal need a rate; only a bill needs a date. */}
+      {fixed && (
+        <>
+          {/*
+            Split across how many pay packets?
+            
+            Offered 1–4 because beyond that it stops being a plan anyone can
+            hold in their head. The engine caps it again at the paydays that
+            actually exist in one bill period, so a monthly earner choosing 4
+            gets 1 — the choice is a preference, not a promise.
+          */}
+          <p style={label}>Set aside over</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 4, padding: 4,
+                        background: 'var(--surface-2)', borderRadius: 'var(--r-pill)' }}>
+            {[1, 2, 3, 4].map((n) => (
+              <button
+                key={n} type="button" aria-pressed={installments === n}
+                onClick={() => setInstallments(installments === n ? null : n)}
+                style={{
+                  padding: '10px 0', borderRadius: 'var(--r-pill)', border: 0, cursor: 'pointer',
+                  fontSize: 'var(--fs-sm)', fontWeight: 800,
+                  background: installments === n ? 'var(--brand)' : 'transparent',
+                  color: installments === n ? 'var(--on-accent)' : 'var(--text-dim)',
+                }}
+              >{n === 1 ? 'All at once' : `${n}×`}</button>
+            ))}
+          </div>
+          <p style={{ fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)', fontWeight: 600, marginTop: 6 }}>
+            {installments === null
+              ? 'Spread across as many paydays as fit before it is due.'
+              : installments === 1
+                ? 'Taken from the one payday before it is due.'
+                : `Split across ${installments} paydays, if there are that many.`}
+          </p>
         </>
       )}
 
@@ -247,9 +352,11 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
               color: icon === k ? 'var(--text)' : 'var(--text-dim)',
             }}
           >
-            <svg viewBox="0 0 24 24" width={19} height={19} stroke="currentColor" strokeWidth={2}
-                 fill="none" strokeLinecap="round" strokeLinejoin="round"
-                 dangerouslySetInnerHTML={{ __html: ICONS[k] ?? '' }} />
+            {/* The picker shows the icon exactly as it will appear on a
+                transaction — the line-art preview no longer matched. */}
+            <svg viewBox="0 0 24 24" width={21} height={21} aria-hidden focusable="false">
+              {(COLOUR_ICONS[k] ?? []).map(([fill, d], n) => <path key={n} fill={fill} d={d} />)}
+            </svg>
           </button>
         ))}
       </div>
@@ -276,7 +383,6 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
       </div>
 
       <div style={btnRow}>
-        <button type="button" style={ghost} onClick={onClose}>Cancel</button>
         <button
           type="button"
           disabled={!valid}
@@ -286,7 +392,10 @@ export function CategoryEditor({ cat, currency, onSave, onDelete, onClose }: {
             onSave({
               ...(cat ? { local_id: cat.local_id } : {}),
               name: name.trim(), icon, colour, limit_minor: limitMinor, is_fixed: fixed,
-              due_day: fixed && dueDay.trim() ? dayNum : null,
+              due_day: kind === 'bill' && dueDay.trim() ? dayNum : null,
+              kind,
+              ...(fixed ? { installments } : {}),
+              ...(kind === 'bill' ? { recurrence } : {}),
             });
             onClose();
           }}
@@ -342,7 +451,6 @@ export function BankEditor({ bank, onSave, onDelete, onClose }: {
       </div>
 
       <div style={btnRow}>
-        <button type="button" style={ghost} onClick={onClose}>Cancel</button>
         <button
           type="button"
           disabled={!valid}
@@ -489,7 +597,6 @@ export function DeleteAccountEditor({ onConfirm, onClose }: {
       )}
 
       <div style={btnRow}>
-        <button type="button" style={ghost} disabled={busy} onClick={onClose}>Cancel</button>
         <button
           type="button"
           disabled={!ok || busy}
@@ -504,7 +611,7 @@ export function DeleteAccountEditor({ onConfirm, onClose }: {
           style={{
             width: '100%', padding: 15, borderRadius: 'var(--r-md)', border: 0,
             fontSize: 'var(--fs-md)', fontWeight: 800,
-            background: 'var(--danger)', color: '#fff',
+            background: 'var(--danger)', color: 'var(--on-accent)',
             opacity: ok && !busy ? 1 : .35,
             cursor: ok && !busy ? 'pointer' : 'not-allowed',
           }}

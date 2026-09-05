@@ -174,6 +174,21 @@ export class AuthController {
     }
   }
 
+  /*
+   * Public, like refresh — and for the same reason.
+   *
+   * Logout authenticates with the refresh COOKIE, not the access token. The
+   * access token is memory-only and lives fifteen minutes, so requiring it
+   * meant that once it expired the request 401'd, the server never cleared the
+   * cookie, and the reload traded that still-valid cookie for a new session:
+   * the user pressed Sign out and landed straight back in the app, with no way
+   * out. Logout must be the one thing that always works.
+   *
+   * Nothing is exposed by making it public. Without a refresh token there is
+   * no session to revoke and the handler only clears the caller's own cookie,
+   * and the cookie is SameSite=Lax, so a cross-site POST cannot present it.
+   */
+  @Public()
   @Post('logout')
   async logout(
     @Req() req: AuthedRequest,

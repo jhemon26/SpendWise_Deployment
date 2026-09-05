@@ -1,0 +1,1 @@
+1. bidget shows only the day to day cost ,  does not nclude the fixed spending. it should include the fix spending as well. and salso this moth section shows out of £ where the day to day and fixed toger money shouyld be there.  is the 22 days left correct calculation? days extraction shoyld be considered with real time months cound plus leap year etc 

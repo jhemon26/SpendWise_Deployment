@@ -7,8 +7,25 @@
  * browser flow must never use one.
  */
 
+/*
+ * The OAuth client ID for www.spendwise.uk.
+ *
+ * Public by definition — it is embedded in every browser bundle and visible to
+ * anyone who views source. Google's security model rests on the registered
+ * origin, not on this string being hidden, and the client secret is never in
+ * the browser at all (see above).
+ *
+ * It lives here rather than in an env file because it once did not: a build
+ * made without the untracked .env produced an empty ID, `ready` went false,
+ * and the Google button was disabled on a live sign-in screen with no error to
+ * explain it. A value that is public, fixed, and required to boot is not
+ * configuration — it is a constant. The env var still overrides, for a
+ * different deployment.
+ */
+const DEFAULT_CLIENT_ID = '597080784367-0oa7pfngksc4ih6sqsfouvbv2fog9un2.apps.googleusercontent.com';
+
 export const GOOGLE_CLIENT_ID =
-  (import.meta.env['VITE_GOOGLE_CLIENT_ID'] as string | undefined) ?? '';
+  (import.meta.env['VITE_GOOGLE_CLIENT_ID'] as string | undefined) || DEFAULT_CLIENT_ID;
 
 const SRC = 'https://accounts.google.com/gsi/client';
 

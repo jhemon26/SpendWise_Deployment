@@ -21,6 +21,13 @@ interface Wire {
   avatar_emoji: string;
   avatar_colour: string;
   monthly_income_minor: number;
+  cycle_kind: 'days' | 'monthly';
+  cycle_length_days: number | null;
+  cycle_anchor_date: string | null;
+  cycle_anchor_day: number | null;
+  expected_income_minor: number;
+  budget_start_date: string | null;
+  opening_cash_minor: number;
 }
 
 const toWire = (s: Settings): Wire => ({
@@ -31,6 +38,13 @@ const toWire = (s: Settings): Wire => ({
   avatar_emoji: s.avatarEmoji,
   avatar_colour: s.avatarColour,
   monthly_income_minor: s.monthlyIncomeMinor,
+  cycle_kind: s.cycleKind,
+  cycle_length_days: s.cycleLengthDays,
+  cycle_anchor_date: s.cycleAnchorDate,
+  cycle_anchor_day: s.cycleAnchorDay,
+  expected_income_minor: s.expectedIncomeMinor,
+  budget_start_date: s.budgetStartDate,
+  opening_cash_minor: s.openingCashMinor,
 });
 
 const fromWire = (w: Wire): Settings => ({
@@ -41,6 +55,27 @@ const fromWire = (w: Wire): Settings => ({
   avatarEmoji: w.avatar_emoji,
   avatarColour: w.avatar_colour,
   monthlyIncomeMinor: w.monthly_income_minor,
+  // A server that predates migration 008 sends none of these. Defaulting to
+  // monthly-on-the-1st reproduces the old behaviour rather than producing a
+  // cycle with no anchor, which cycleFor cannot use.
+  cycleKind: w.cycle_kind ?? 'monthly',
+  cycleLengthDays: w.cycle_length_days ?? null,
+  cycleAnchorDate: w.cycle_anchor_date ?? null,
+  cycleAnchorDay: w.cycle_anchor_day ?? 1,
+  /*
+   * Adopt the legacy monthly figure when the cycle one has never been set.
+   *
+   * This is the path that actually matters: a device pulls settings from the
+   * server, and if it takes expected_income_minor at face value a real account
+   * that has only ever had monthly_income_minor reports no income at all —
+   * which silences every affordability signal and leaves Analytics showing
+   * "In £0.00" to someone earning £2,000 a month.
+   */
+  expectedIncomeMinor: (w.expected_income_minor ?? 0) > 0
+    ? w.expected_income_minor
+    : (w.monthly_income_minor ?? 0),
+  budgetStartDate: w.budget_start_date ?? null,
+  openingCashMinor: Number(w.opening_cash_minor ?? 0),
 });
 
 export async function fetchSettings(

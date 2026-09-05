@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { uuidv7, type Category, type Transaction } from '@spendwise/shared-types';
+import { uuidv7, flowFields, type Category, type Transaction } from '@spendwise/shared-types';
 import { MemoryAdapter, type StorageAdapter } from './adapter.js';
 import { DexieAdapter } from './dexie.js';
 
@@ -22,7 +22,7 @@ function tx(over: Partial<Transaction> = {}): Transaction {
     category_id: null, bank_id: null,
     amount_minor: -1000, currency: 'GBP', base_minor: -1000, base_currency: 'GBP',
     fx_rate: 1, fx_rate_date: '2026-08-07', fx_provisional: false,
-    merchant: 'Shop', note: null, occurred_at: NOW, is_income: false, pending: false, ...over,
+    merchant: 'Shop', note: null, occurred_at: NOW, is_income: false, is_transfer: false, pending: false, ...over,
   };
 }
 
@@ -31,7 +31,7 @@ function cat(over: Partial<Category> = {}): Category {
     local_id: uuidv7(), server_id: null, created_at: NOW, updated_at: NOW, deleted_at: null,
     sync_status: 'pending', version: 0, device_id: 'd1',
     name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
-    is_fixed: false, due_day: null, ...over,
+    is_fixed: false, due_day: null, ...flowFields(), ...over,
   };
 }
 

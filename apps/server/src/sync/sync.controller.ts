@@ -26,6 +26,15 @@ const settingsSchema = z.object({
   // into an inline style on the client.
   avatar_colour: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#6366F1'),
   monthly_income_minor: z.number().int().nonnegative().max(1_000_000_000).default(0),
+  cycle_kind: z.enum(['days', 'monthly']).default('monthly'),
+  // Only these three: an arbitrary length would let a client invent a cycle the
+  // accrual maths has no sensible cycles-per-year for.
+  cycle_length_days: z.union([z.literal(7), z.literal(14), z.literal(28)]).nullable().default(null),
+  cycle_anchor_date: z.string().date().nullable().default(null),
+  cycle_anchor_day: z.number().int().min(1).max(31).nullable().default(null),
+  expected_income_minor: z.number().int().nonnegative().max(1_000_000_000).default(0),
+  budget_start_date: z.string().date().nullable().default(null),
+  opening_cash_minor: z.number().int().min(-1_000_000_000).max(1_000_000_000).default(0),
 });
 
 /**

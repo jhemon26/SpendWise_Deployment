@@ -1,4 +1,7 @@
-import { uuidv7, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
+import {
+  uuidv7, flowFields, billFields, anchorFromDueDay,
+  type Bank, type Category, type Transaction,
+} from '@spendwise/shared-types';
 import type { StorageAdapter } from '../../core/db/adapter.js';
 
 /**
@@ -42,6 +45,9 @@ export async function seedDemo(db: StorageAdapter): Promise<void> {
   ): Category => ({
     local_id: uuidv7(), ...envelope(), name, icon, colour,
     limit_minor: limit, is_fixed: fixed, due_day: dueDay,
+    ...(fixed && dueDay !== null
+      ? billFields('monthly', anchorFromDueDay(dueDay, new Date()))
+      : flowFields()),
   });
 
   const categories: Category[] = [
@@ -85,7 +91,7 @@ export async function seedDemo(db: StorageAdapter): Promise<void> {
       base_minor: income ? Math.abs(amountMinor) : -Math.abs(amountMinor),
       base_currency: 'GBP',
       fx_rate: 1, fx_rate_date: at.slice(0, 10), fx_provisional: false,
-      merchant, note: null, occurred_at: at, is_income: income, pending,
+      merchant, note: null, occurred_at: at, is_income: income, is_transfer: false, pending,
     };
   };
 
@@ -102,7 +108,7 @@ export async function seedDemo(db: StorageAdapter): Promise<void> {
       amount_minor: -Math.abs(amountMinor), currency: 'GBP',
       base_minor: -Math.abs(amountMinor), base_currency: 'GBP',
       fx_rate: 1, fx_rate_date: at.slice(0, 10), fx_provisional: false,
-      merchant, note: null, occurred_at: at, is_income: false, pending: false,
+      merchant, note: null, occurred_at: at, is_income: false, is_transfer: false, pending: false,
     };
   };
 

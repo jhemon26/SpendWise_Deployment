@@ -4,6 +4,21 @@ import type { Bank, Category } from '@spendwise/shared-types';
 import type { IdempotencyRecord, PullPage, StoredTransaction, SyncRepo, UserSettings } from './sync.repo.js';
 
 /**
+ * A DATE column arrives from pg as a Date at local midnight. The wire format is
+ * a plain calendar day with no timezone, so formatting it back through
+ * toISOString() would shift it a day either side of UTC.
+ */
+function isoDay(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) {
+    const m = `${v.getMonth() + 1}`.padStart(2, '0');
+    const d = `${v.getDate()}`.padStart(2, '0');
+    return `${v.getFullYear()}-${m}-${d}`;
+  }
+  return String(v).slice(0, 10);
+}
+
+/**
  * Postgres-backed sync repository.
  *
  * Constructed with a client that is ALREADY inside `Db.withUser`, so every
@@ -33,12 +48,13 @@ interface Row {
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
+  is_transfer: boolean;
 }
 
 const COLS = `local_id, user_id, category_id, bank_id, amount_minor, currency,
   base_minor, base_currency, fx_rate, fx_rate_date, fx_provisional,
   merchant_enc, note_enc, occurred_at, is_income, pending, version,
-  created_at, updated_at, deleted_at`;
+  created_at, updated_at, deleted_at, is_transfer`;
 
 /**
  * BIGINT and NUMERIC arrive from node-postgres as STRINGS, because they can
@@ -72,6 +88,7 @@ function toStored(r: Row): StoredTransaction {
     note: r.note_enc ? r.note_enc.toString('utf8') : null,
     occurred_at: r.occurred_at.toISOString(),
     is_income: r.is_income,
+    is_transfer: r.is_transfer,
     pending: r.pending,
   };
 }
@@ -121,6 +138,9 @@ export class PgSyncRepo implements SyncRepo {
       t.base_minor, t.base_currency, t.fx_rate, t.fx_rate_date, t.fx_provisional,
       buf(t.merchant), buf(t.note), t.occurred_at, t.is_income, t.pending, t.version,
       t.created_at, t.updated_at, t.deleted_at,
+      // Defaulted here as well as in the schema: a client built before 009
+      // simply does not send the field, and NOT NULL would reject the row.
+      t.is_transfer ?? false,
     ];
 
     const upd = await this.c.query(
@@ -129,7 +149,7 @@ export class PgSyncRepo implements SyncRepo {
          base_minor=$7, base_currency=$8, fx_rate=$9, fx_rate_date=$10,
          fx_provisional=$11, merchant_enc=$12, note_enc=$13, occurred_at=$14,
          is_income=$15, pending=$16, version=$17, created_at=$18,
-         updated_at=$19, deleted_at=$20
+         updated_at=$19, deleted_at=$20, is_transfer=$21
        WHERE local_id=$1 AND user_id=$2`,
       params,
     );
@@ -137,7 +157,7 @@ export class PgSyncRepo implements SyncRepo {
 
     await this.c.query(
       `INSERT INTO transactions (${COLS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
       params,
     );
   }
@@ -197,14 +217,22 @@ export class PgSyncRepo implements SyncRepo {
     await this.c.query(
       `INSERT INTO categories
          (local_id, user_id, name, icon, colour, limit_minor, is_fixed, due_day,
-          version, created_at, updated_at, deleted_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          kind, pot_kind, recurrence, anchor_date, target_date, opening_minor,
+          version, created_at, updated_at, deleted_at, installments)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        ON CONFLICT (local_id) DO UPDATE SET
          name=$3, icon=$4, colour=$5, limit_minor=$6, is_fixed=$7, due_day=$8,
-         version=$9, updated_at=$11, deleted_at=$12
-       WHERE categories.updated_at < $11`,
+         kind=$9, pot_kind=$10, recurrence=$11, anchor_date=$12, target_date=$13,
+         opening_minor=$14, version=$15, updated_at=$17, deleted_at=$18,
+         installments=$19
+       WHERE categories.updated_at < $17`,
       [row.local_id, userId, row.name, row.icon, row.colour, row.limit_minor,
-       row.is_fixed, row.due_day, row.version, row.created_at, row.updated_at, row.deleted_at],
+       row.is_fixed, row.due_day,
+       row.kind, row.pot_kind, row.recurrence, row.anchor_date, row.target_date,
+       row.opening_minor,
+       row.version, row.created_at, row.updated_at, row.deleted_at,
+       // Defaulted here too: a client built before 010 does not send it.
+       row.installments ?? null],
     );
   }
 
@@ -224,7 +252,8 @@ export class PgSyncRepo implements SyncRepo {
   async listCategoriesChangedSince(userId: string, since: Date): Promise<Category[]> {
     const r = await this.c.query(
       `SELECT local_id, name, icon, colour, limit_minor, is_fixed, due_day,
-              version, created_at, updated_at, deleted_at
+              kind, pot_kind, recurrence, anchor_date, target_date, opening_minor,
+              installments, version, created_at, updated_at, deleted_at
          FROM categories WHERE user_id=$1 AND updated_at > $2
         ORDER BY updated_at, local_id`,
       [userId, since],
@@ -238,7 +267,15 @@ export class PgSyncRepo implements SyncRepo {
       // BIGINT arrives as a string; see toStored for why this must be deliberate.
       limit_minor: Number(x['limit_minor']),
       is_fixed: x['is_fixed'] as boolean,
+      installments: x['installments'] === null ? null : Number(x['installments']),
       due_day: x['due_day'] === null ? null : Number(x['due_day']),
+      kind: x['kind'] as 'flow' | 'pot',
+      pot_kind: (x['pot_kind'] ?? null) as 'bill' | 'saving' | 'goal' | null,
+      recurrence: (x['recurrence'] ?? null) as Category['recurrence'],
+      // DATE comes back as a Date from pg; the wire format is a plain ISO day.
+      anchor_date: isoDay(x['anchor_date']),
+      target_date: isoDay(x['target_date']),
+      opening_minor: Number(x['opening_minor'] ?? 0),
       version: x['version'] as number,
       created_at: (x['created_at'] as Date).toISOString(),
       updated_at: (x['updated_at'] as Date).toISOString(),
@@ -272,7 +309,9 @@ export class PgSyncRepo implements SyncRepo {
   async getSettings(userId: string): Promise<UserSettings | null> {
     const r = await this.c.query(
       `SELECT display_name, base_currency, day_to_day_minor, savings_target_minor,
-              avatar_emoji, avatar_colour, monthly_income_minor, updated_at
+              avatar_emoji, avatar_colour, monthly_income_minor,
+              cycle_kind, cycle_length_days, cycle_anchor_date, cycle_anchor_day,
+              expected_income_minor, budget_start_date, opening_cash_minor, updated_at
          FROM user_settings WHERE user_id=$1`,
       [userId],
     );
@@ -286,6 +325,13 @@ export class PgSyncRepo implements SyncRepo {
       avatar_emoji: x['avatar_emoji'] as string,
       avatar_colour: x['avatar_colour'] as string,
       monthly_income_minor: Number(x['monthly_income_minor']),
+      cycle_kind: x['cycle_kind'] as 'days' | 'monthly',
+      cycle_length_days: x['cycle_length_days'] === null ? null : Number(x['cycle_length_days']),
+      cycle_anchor_date: isoDay(x['cycle_anchor_date']),
+      cycle_anchor_day: x['cycle_anchor_day'] === null ? null : Number(x['cycle_anchor_day']),
+      expected_income_minor: Number(x['expected_income_minor'] ?? 0),
+      budget_start_date: isoDay(x['budget_start_date']),
+      opening_cash_minor: Number(x['opening_cash_minor'] ?? 0),
       updated_at: (x['updated_at'] as Date).toISOString(),
     };
   }
@@ -294,17 +340,22 @@ export class PgSyncRepo implements SyncRepo {
     await this.c.query(
       `INSERT INTO user_settings
          (user_id, display_name, base_currency, day_to_day_minor,
-          savings_target_minor, avatar_emoji, avatar_colour,
-          monthly_income_minor, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          savings_target_minor, avatar_emoji, avatar_colour, monthly_income_minor,
+          cycle_kind, cycle_length_days, cycle_anchor_date, cycle_anchor_day,
+          expected_income_minor, budget_start_date, updated_at, opening_cash_minor)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT (user_id) DO UPDATE SET
          display_name=$2, base_currency=$3, day_to_day_minor=$4,
          savings_target_minor=$5, avatar_emoji=$6, avatar_colour=$7,
-         monthly_income_minor=$8, updated_at=$9
-       WHERE user_settings.updated_at < $9`,
+         monthly_income_minor=$8, cycle_kind=$9, cycle_length_days=$10,
+         cycle_anchor_date=$11, cycle_anchor_day=$12, expected_income_minor=$13,
+         budget_start_date=$14, updated_at=$15, opening_cash_minor=$16
+       WHERE user_settings.updated_at < $15`,
       [userId, s.display_name, s.base_currency, s.day_to_day_minor,
        s.savings_target_minor, s.avatar_emoji, s.avatar_colour,
-       s.monthly_income_minor, s.updated_at],
+       s.monthly_income_minor, s.cycle_kind, s.cycle_length_days, s.cycle_anchor_date,
+       s.cycle_anchor_day, s.expected_income_minor, s.budget_start_date, s.updated_at,
+       s.opening_cash_minor ?? 0],
     );
   }
 

@@ -11,8 +11,8 @@ function d(over: Partial<Derived> = {}): Derived {
     flexSpentMinor: 50000, fixedSpentMinor: 0, incomeMinor: 0, monthTotalMinor: 50000,
     leftMinor: 50000, perDayMinor: 3125, spentPct: 50, datePct: 50,
     expectedMinor: 50000, deltaMinor: 0, evenPaceMinor: 3333,
-    todaySpentMinor: 0, byCategory: new Map(), spendFreeDays: 0, biggest: null,
-    avgDayMinor: 0, fixedSharePct: 0, projectedSavingsMinor: 0, committedFixedMinor: 0,
+    todaySpentMinor: 0, todayFlexSpentMinor: 0, byCategory: new Map(), spendFreeDays: 0, biggest: null,
+    avgDayMinor: 0, fixedSharePct: 0, committedFixedMinor: 0,
     ...over,
   } as Derived;
 }

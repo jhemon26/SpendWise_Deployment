@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Category, Transaction } from '@spendwise/shared-types';
+import { flowFields } from '@spendwise/shared-types';
 import {
   derive, statusOf, groupByDay, dayLabel, categoryBreakdown,
   billsFor, upcomingBills, fixedCostsTotalMinor, monthHistory, historyAverageMinor,
@@ -16,7 +17,7 @@ function cat(over: Partial<Category> = {}): Category {
     local_id: id(), server_id: null, created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
     deleted_at: null, sync_status: 'synced', version: 1, device_id: 'd',
     name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
-    is_fixed: false, due_day: null, ...over,
+    is_fixed: false, due_day: null, ...flowFields(), ...over,
   };
 }
 
@@ -28,7 +29,7 @@ function tx(over: Partial<Transaction> = {}): Transaction {
     category_id: null, bank_id: null,
     amount_minor: -1000, currency: 'GBP', base_minor: -1000, base_currency: 'GBP',
     fx_rate: 1, fx_rate_date: '2026-08-07', fx_provisional: false,
-    merchant: 'Shop', note: null, occurred_at: t, is_income: false, pending: false, ...over,
+    merchant: 'Shop', note: null, occurred_at: t, is_income: false, is_transfer: false, pending: false, ...over,
   };
 }
 
@@ -121,17 +122,35 @@ describe('derive — spending', () => {
     expect(d.todaySpentMinor).toBe(2400);
   });
 
-  it('projects savings as income less fixed less the budget', () => {
+  it('keeps today’s day-to-day spend apart from today’s bills', () => {
+    /*
+     * The Home tile grades today against evenPaceMinor, which is a slice of the
+     * DAY-TO-DAY budget. Feeding it todaySpentMinor — which counts bills too —
+     * meant that on rent day the tile claimed you were hundreds over for the
+     * day while your spending money was untouched.
+     */
     const flex = cat();
     const fixed = cat({ is_fixed: true });
     const d = derive(
-      [tx({ is_income: true, amount_minor: 244500, base_minor: 244500 }),
-       tx({ category_id: fixed.local_id, amount_minor: -121700, base_minor: -121700 })],
+      [tx({ category_id: flex.local_id, amount_minor: -2400, base_minor: -2400 }),
+       tx({ category_id: fixed.local_id, amount_minor: -90000, base_minor: -90000 })],
       [flex, fixed],
       ctx,
     );
-    // 244500 - 121700 - 82000 = 40800
-    expect(d.projectedSavingsMinor).toBe(40800);
+    expect(d.todaySpentMinor).toBe(92400);       // everything that left today
+    expect(d.todayFlexSpentMinor).toBe(2400);    // only the spending money
+  });
+
+  it('counts uncategorised spend as bills for today, not as spending money', () => {
+    // Uncategorised falls in the residual bucket, so it must not inflate the
+    // figure the daily allowance is judged against.
+    const flex = cat();
+    const d = derive(
+      [tx({ category_id: null, amount_minor: -5000, base_minor: -5000 })],
+      [flex],
+      ctx,
+    );
+    expect(d.todayFlexSpentMinor).toBe(0);
   });
 });
 
@@ -148,14 +167,27 @@ describe('statusOf', () => {
 describe('groupByDay', () => {
   it('buckets by day, newest first, with a net total', () => {
     const g = groupByDay(
-      [tx({ occurred_at: '2026-08-07T09:00:00Z', amount_minor: -1000 }),
-       tx({ occurred_at: '2026-08-07T18:00:00Z', amount_minor: -500 }),
-       tx({ occurred_at: '2026-08-06T10:00:00Z', amount_minor: -300 })],
+      // base_minor must be set alongside amount_minor: the totals read the
+      // converted value, so a fixture that sets only one is self-contradictory.
+      [tx({ occurred_at: '2026-08-07T09:00:00Z', amount_minor: -1000, base_minor: -1000 }),
+       tx({ occurred_at: '2026-08-07T18:00:00Z', amount_minor: -500, base_minor: -500 }),
+       tx({ occurred_at: '2026-08-06T10:00:00Z', amount_minor: -300, base_minor: -300 })],
       NOW,
     );
     expect(g.map((x) => x.label)).toEqual(['Today', 'Yesterday']);
     expect(g[0]!.netMinor).toBe(-1500);
     expect(g[1]!.items).toHaveLength(1);
+  });
+
+  it('sums day totals in the reporting currency, not the one typed', () => {
+    // A €14 lunch was being added as 14 to a sterling day total. Every other
+    // total in the app reads base_minor; this one read amount_minor.
+    const g = groupByDay(
+      [tx({ occurred_at: '2026-08-07T09:00:00Z', amount_minor: -1400, base_minor: -1190 }),
+       tx({ occurred_at: '2026-08-07T18:00:00Z', amount_minor: -500, base_minor: -500 })],
+      NOW,
+    );
+    expect(g[0]!.netMinor).toBe(-1690);
   });
 
   it('labels relative days', () => {
@@ -292,7 +324,7 @@ describe('monthHistory', () => {
 
   it('excludes income — this is a spending chart', () => {
     const out = monthHistory([
-      tx({ amount_minor: 500000, base_minor: 500000, is_income: true, occurred_at: '2026-08-03T10:00:00.000Z' }),
+      tx({ amount_minor: 500000, base_minor: 500000, is_income: true, is_transfer: false, occurred_at: '2026-08-03T10:00:00.000Z' }),
     ], NOW, 6);
     expect(out.at(-1)!.totalMinor).toBe(0);
   });

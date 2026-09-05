@@ -10,14 +10,14 @@ import { PRIVACY_SECTIONS, POLICY_VERSION } from './privacy.js';
 export function PrivacyScreen({ onBack }: { onBack: () => void }): JSX.Element {
   return (
     <main style={{
-      minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)',
-      overflowY: 'auto',
+      minHeight: '100dvh', maxHeight: '100dvh', background: 'transparent', color: 'var(--text)',
+      display: 'flex', flexDirection: 'column',
     }}>
+      {/* Lifted out of the scroll area rather than given a tint: a header that
+          does not move needs no background to stay readable. */}
       <div style={{
-        position: 'sticky', top: 0, zIndex: 2, background: 'var(--bg)',
-        borderBottom: '1px solid var(--line)',
-        display: 'flex', alignItems: 'center', gap: 'var(--s3)',
-        padding: 'var(--s4) var(--s5)',
+        display: 'flex', alignItems: 'center', gap: 'var(--s3)', flexShrink: 0,
+        padding: 'calc(var(--safe-top) + var(--s4)) var(--s5) var(--s4)',
       }}>
         <button
           type="button"
@@ -40,7 +40,11 @@ export function PrivacyScreen({ onBack }: { onBack: () => void }): JSX.Element {
         </div>
       </div>
 
-      <div style={{ padding: 'var(--s5)', paddingBottom: 'var(--s7)', maxWidth: 640, marginInline: 'auto' }}>
+      <div style={{
+        flex: 1, overflowY: 'auto',
+        padding: 'var(--s5)', paddingBottom: 'calc(var(--safe-bottom) + var(--s7))',
+        maxWidth: 640, marginInline: 'auto', width: '100%',
+      }}>
         {PRIVACY_SECTIONS.map((sec) => (
           <section key={sec.heading} style={{ marginBottom: 'var(--s6)' }}>
             <h2 style={{ fontSize: 'var(--fs-md)', fontWeight: 700, letterSpacing: '-.02em', marginBottom: 'var(--s2)' }}>

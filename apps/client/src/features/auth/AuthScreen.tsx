@@ -314,7 +314,6 @@ export function AuthScreen({ auth, onSignedIn, oidcAvailable = false }: AuthScre
                   value={local}
                   onChange={(e) => setLocal(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && validPhone) void send(); }}
-                  placeholder="7700 900000"
                   style={phoneInput}
                 />
               </div>
@@ -413,7 +412,7 @@ function Spinner(): JSX.Element {
     <>
       <span aria-hidden style={{
         width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
-        border: '2px solid rgba(255,255,255,.35)', borderTopColor: '#fff',
+        border: '2px solid rgba(8,8,13,.30)', borderTopColor: 'var(--on-accent)',
         animation: 'sw-spin .7s linear infinite',
       }} />
       <style>{'@keyframes sw-spin{to{transform:rotate(360deg)}}'}</style>
@@ -487,7 +486,7 @@ const page: React.CSSProperties = {
   color: 'var(--text)',
   display: 'grid',
   placeItems: 'center',
-  padding: 'var(--s5)',
+  padding: 'calc(var(--safe-top) + var(--s5)) var(--s5) calc(var(--safe-bottom) + var(--s5))',
   overflow: 'hidden',
 };
 
@@ -495,7 +494,7 @@ const page: React.CSSProperties = {
 const glow: React.CSSProperties = {
   position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
   width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
-  background: 'radial-gradient(circle, rgba(99,102,241,.22) 0%, rgba(168,85,247,.08) 44%, transparent 70%)',
+  background: 'radial-gradient(circle, rgba(194,214,232,.20) 0%, rgba(159,199,178,.07) 44%, transparent 70%)',
 };
 
 const shell: React.CSSProperties = {
@@ -583,7 +582,7 @@ const base: React.CSSProperties = {
 };
 
 const primary = (disabled: boolean): React.CSSProperties => ({
-  ...base, background: 'var(--brand)', color: '#fff', fontWeight: 600,
+  ...base, background: 'var(--brand)', color: 'var(--on-accent)', fontWeight: 600,
   opacity: disabled ? .35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
   transition: 'opacity .15s ease',
 });

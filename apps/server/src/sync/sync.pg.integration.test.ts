@@ -2,7 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Client } from 'pg';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { uuidv7, type SyncPushRequest, type Transaction } from '@spendwise/shared-types';
+import {
+  uuidv7, flowFields, billFields,
+  type Category, type SyncPushRequest, type Transaction,
+} from '@spendwise/shared-types';
 import { Db } from '../db/db.js';
 import { PgSyncRepo } from './sync.repo.pg.js';
 import { SyncService } from './sync.service.js';
@@ -253,5 +256,74 @@ describe.skipIf(!available)('sync over Postgres', () => {
       if (++guard > 10) throw new Error('cursor did not terminate');
     } while (cursor);
     expect(new Set(seen).size).toBe(5);
+  });
+
+  /* ── cycles and pots (migration 008) ──────────────────────────────────
+     Types agreeing is not the same as data surviving a save and a reload.
+     These write through the real repo and read back, so a mis-numbered
+     placeholder or a DATE coming back shifted by a timezone would fail here
+     rather than in someone's rent reminder. */
+
+  const category = (over: Partial<Category> = {}): Category => ({
+    local_id: uuidv7(), server_id: null,
+    created_at: iso(clock), updated_at: iso(clock), deleted_at: null,
+    sync_status: 'synced', version: 1, device_id: 'd',
+    name: 'Groceries', icon: 'groceries', colour: '#93bfb2',
+    limit_minor: 9000, is_fixed: false, due_day: null,
+    ...flowFields(), ...over,
+  });
+
+  it('round-trips a flow category unchanged', async () => {
+    const c = category();
+    await db.withUser(userA, async (cl) => new PgSyncRepo(cl).putCategory(userA, c));
+    const back = await db.withUser(userA, async (cl) =>
+      (await new PgSyncRepo(cl).listCategoriesChangedSince(userA, new Date(0))).find((x) => x.local_id === c.local_id));
+    expect(back?.kind).toBe('flow');
+    expect(back?.pot_kind).toBeNull();
+    expect(back?.opening_minor).toBe(0);
+  });
+
+  it('round-trips a pot, including the anchor date and opening balance', async () => {
+    const c = category({
+      name: 'Car insurance', limit_minor: 48000, is_fixed: true,
+      ...billFields('annual', '2027-03-01', 12500),
+    });
+    await db.withUser(userA, async (cl) => new PgSyncRepo(cl).putCategory(userA, c));
+    const back = await db.withUser(userA, async (cl) =>
+      (await new PgSyncRepo(cl).listCategoriesChangedSince(userA, new Date(0))).find((x) => x.local_id === c.local_id));
+    expect(back?.kind).toBe('pot');
+    expect(back?.pot_kind).toBe('bill');
+    expect(back?.recurrence).toBe('annual');
+    // A DATE comes back from pg as a Date. Formatting it through toISOString()
+    // shifts it a day either side of UTC, which would silently move due dates.
+    expect(back?.anchor_date).toBe('2027-03-01');
+    expect(back?.opening_minor).toBe(12500);
+  });
+
+  it('round-trips a weekly cycle through settings', async () => {
+    const now = iso(clock);
+    await db.withUser(userA, async (cl) => new PgSyncRepo(cl).putSettings(userA, {
+      display_name: 'Emon', base_currency: 'GBP',
+      day_to_day_minor: 21300, savings_target_minor: 20000,
+      avatar_emoji: '', avatar_colour: '#c2d6e8', monthly_income_minor: 0,
+      cycle_kind: 'days', cycle_length_days: 7, cycle_anchor_date: '2026-08-07',
+      cycle_anchor_day: null, expected_income_minor: 50000,
+      budget_start_date: '2026-08-07', updated_at: now,
+    }));
+    const back = await db.withUser(userA, async (cl) => new PgSyncRepo(cl).getSettings(userA));
+    expect(back?.cycle_kind).toBe('days');
+    expect(back?.cycle_length_days).toBe(7);
+    expect(back?.cycle_anchor_date).toBe('2026-08-07');
+    expect(back?.expected_income_minor).toBe(50000);
+    expect(back?.budget_start_date).toBe('2026-08-07');
+  });
+
+  it('refuses a bill with no recurrence, at the database level', async () => {
+    // The client should never build one, but the constraint is what guarantees
+    // a pot the accrual engine cannot compute a due date for never exists.
+    const bad = category({ kind: 'pot', pot_kind: 'bill', recurrence: null, anchor_date: null });
+    await expect(
+      db.withUser(userA, async (cl) => new PgSyncRepo(cl).putCategory(userA, bad)),
+    ).rejects.toThrow();
   });
 });

@@ -40,12 +40,12 @@ export interface Derived {
   deltaMinor: number;
   evenPaceMinor: number;
   todaySpentMinor: number;
+  todayFlexSpentMinor: number;
   byCategory: Map<string, number>;
   spendFreeDays: number;
   biggest: Transaction | null;
   avgDayMinor: number;
   fixedSharePct: number;
-  projectedSavingsMinor: number;
   committedFixedMinor: number;
 }
 
@@ -76,7 +76,15 @@ export function derive(
 
   const live = transactions.filter((t) => !t.deleted_at);
   const monthTx = live.filter((t) => inMonth(t.occurred_at, now));
-  const spendTx = monthTx.filter((t) => !t.is_income);
+  /*
+   * Spending, not movement.
+   *
+   * A transfer is money going into one of your own pots — setting £75 aside
+   * for the car finance makes you no poorer, and counting it here made it
+   * appear as a purchase in "Where it went", in the day totals and in every
+   * spending figure on the screen.
+   */
+  const spendTx = monthTx.filter((t) => !t.is_income && !t.is_transfer);
 
   const flexIds = new Set(categories.filter((c) => !c.is_fixed && !c.deleted_at).map((c) => c.local_id));
 
@@ -103,6 +111,24 @@ export function derive(
     .filter((t) => sameDay(t.occurred_at, now))
     .reduce((s, t) => s + abs(t), 0);
 
+  /*
+   * Today's DAY-TO-DAY spend, separately.
+   *
+   * The Home tile reads "£24.80 · £8.75 over" by comparing today's spend
+   * against evenPaceMinor. But evenPaceMinor is a share of the day-to-day
+   * budget only, while todaySpentMinor counts everything — so on the day rent
+   * or a direct debit left the account, the tile told people they were
+   * hundreds over for the day when their spending money was untouched. Two
+   * different bases, compared as though they were the same.
+   *
+   * The tile is about spending money, so it needs the spending-money figure.
+   * todaySpentMinor stays as it is: "everything that left today" is still the
+   * honest answer for the headline number.
+   */
+  const todayFlexSpentMinor = spendTx
+    .filter((t) => sameDay(t.occurred_at, now) && t.category_id !== null && flexIds.has(t.category_id))
+    .reduce((s, t) => s + abs(t), 0);
+
   const byCategory = new Map<string, number>();
   for (const t of spendTx) {
     if (!t.category_id) continue;
@@ -123,8 +149,6 @@ export function derive(
    * past it. Stable while on budget, falls the moment you are not.
    */
   const committedFixedMinor = fixedCostsMinor ?? fixedSpentMinor;
-  const projectedSavingsMinor =
-    incomeMinor - committedFixedMinor - Math.max(dayToDayMinor, flexSpentMinor);
 
   void savingsTargetMinor;
 
@@ -132,8 +156,8 @@ export function derive(
     daysInMonth, dayOfMonth, daysLeft,
     flexSpentMinor, fixedSpentMinor, incomeMinor, monthTotalMinor,
     leftMinor, perDayMinor, spentPct, datePct, expectedMinor, deltaMinor, evenPaceMinor,
-    todaySpentMinor, byCategory, spendFreeDays, biggest, avgDayMinor, fixedSharePct,
-    projectedSavingsMinor, committedFixedMinor,
+    todaySpentMinor, todayFlexSpentMinor, byCategory, spendFreeDays, biggest, avgDayMinor, fixedSharePct,
+    committedFixedMinor,
   };
 }
 
@@ -169,7 +193,16 @@ export function groupByDay(
       groups.push(g);
     }
     g.items.push(t);
-    g.netMinor += t.is_income ? Math.abs(t.amount_minor) : -Math.abs(t.amount_minor);
+    // base_minor is the reporting-currency value; amount_minor is what was
+    // typed. Every other total in the app converts — this one did not, so a €14
+    // lunch was added as 14 to a sterling day total.
+    const v = Math.abs(t.base_minor ?? t.amount_minor);
+    /*
+     * A transfer nets to nothing on the day it happened: the money left one
+     * of your pockets and arrived in another. Counting it as −£75 made a day
+     * where you saved toward a bill look like a day you spent.
+     */
+    g.netMinor += t.is_transfer ? 0 : (t.is_income ? v : -v);
   }
   return groups;
 }
@@ -230,7 +263,7 @@ export function billsFor(
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const paidIds = new Set(
     transactions
-      .filter((t) => !t.deleted_at && !t.is_income && inMonth(t.occurred_at, now))
+      .filter((t) => !t.deleted_at && !t.is_income && !t.is_transfer && inMonth(t.occurred_at, now))
       .map((t) => t.category_id)
       .filter((id): id is string => id !== null),
   );
@@ -303,7 +336,7 @@ export function monthHistory(
   now: Date,
   months = 6,
 ): MonthPoint[] {
-  const live = transactions.filter((t) => !t.deleted_at && !t.is_income);
+  const live = transactions.filter((t) => !t.deleted_at && !t.is_income && !t.is_transfer);
   const out: MonthPoint[] = [];
 
   for (let back = months - 1; back >= 0; back--) {

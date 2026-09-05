@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatMoney, toMinor, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import { Icon } from '../../design-system/components.js';
+import { chalk } from '../../design-system/hues.js';
 
 /**
  * Add / edit a transaction.
@@ -18,7 +19,6 @@ export interface AddSheetProps {
   baseCurrency: string;
   onClose: () => void;
   onSave: (draft: SaveDraft) => void | Promise<void>;
-  onDelete?: (localId: string) => void | Promise<void>;
 }
 
 export interface SaveDraft {
@@ -45,7 +45,7 @@ function sanitise(raw: string): string {
 }
 
 export function AddSheet({
-  open, editing, categories, banks, baseCurrency, onClose, onSave, onDelete,
+  open, editing, categories, banks, baseCurrency, onClose, onSave,
 }: AddSheetProps): JSX.Element | null {
   const flex = useMemo(() => categories.filter((c) => !c.is_fixed && !c.deleted_at), [categories]);
   const fixedCats = useMemo(() => categories.filter((c) => c.is_fixed && !c.deleted_at), [categories]);
@@ -97,7 +97,7 @@ export function AddSheet({
    * fact the transaction needs to exist.
    */
   const canSave = amountMinor > 0 && (isIncome || categoryId !== null);
-  const accent = isIncome ? 'var(--positive)' : (category?.colour ?? 'var(--brand)');
+  const accent = isIncome ? 'var(--positive)' : (category ? chalk(category.colour) : 'var(--brand)');
 
   return (
     <div
@@ -112,10 +112,35 @@ export function AddSheet({
     >
       <div style={{
         width: '100%', background: 'var(--surface)', borderTop: '1px solid var(--line-strong)',
-        borderRadius: 'var(--r-xl) var(--r-xl) 0 0', padding: 'var(--s3) var(--s5) var(--s6)',
-        maxHeight: '92%', overflowY: 'auto',
+        borderRadius: 'var(--r-xl) var(--r-xl) 0 0',
+        padding: 'var(--s3) var(--s5) calc(var(--safe-bottom) + var(--s6))',
+        maxHeight: '92%', overflowY: 'auto', position: 'relative',
       }}>
-        <div style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--line-strong)', margin: '7px auto var(--s4)' }} />
+        {/*
+          Close lives in the corner, not at the bottom.
+          
+          A full-width "Cancel" under the save button is a second thing to read
+          before doing the thing you opened the sheet for, and it put the least
+          wanted action in the easiest place to hit with a thumb. Every sheet
+          gets the same corner control, so closing is one habit rather than
+          four different ones.
+        */}
+        <div style={{ display: 'flex', alignItems: 'center', margin: '7px 0 var(--s4)' }}>
+          <div style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--line-strong)', margin: '0 auto' }} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              position: 'absolute', right: 'var(--s4)', width: 32, height: 32,
+              display: 'grid', placeItems: 'center', borderRadius: 999, border: 0,
+              background: 'var(--surface-2)', color: 'var(--text-dim)', cursor: 'pointer',
+            }}
+          >
+            <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor"
+                 strokeWidth={2.4} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
 
         <div role="group" aria-label="Type" style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, background: 'var(--surface-2)',
@@ -268,7 +293,7 @@ export function AddSheet({
                 >
                   <span aria-hidden style={{
                     width: 30, height: 30, borderRadius: 'var(--r-sm)', flexShrink: 0,
-                    display: 'grid', placeItems: 'center', color: '#fff', background: b.colour,
+                    display: 'grid', placeItems: 'center', color: 'var(--on-accent)', background: chalk(b.colour),
                   }}>
                     <svg viewBox="0 0 24 24" width={16} height={16} stroke="currentColor" strokeWidth={2}
                          fill="none" strokeLinecap="round" strokeLinejoin="round">
@@ -303,7 +328,7 @@ export function AddSheet({
           title={canSave ? undefined : amountMinor <= 0 ? 'Enter an amount' : 'Pick a category'}
           onClick={() => void submit()}
           style={{
-            width: '100%', background: 'var(--brand)', color: '#fff', padding: 15, marginTop: 'var(--s4)',
+            width: '100%', background: 'var(--brand)', color: 'var(--on-accent)', padding: 15, marginTop: 'var(--s4)',
             borderRadius: 'var(--r-md)', fontSize: 'var(--fs-md)', fontWeight: 800, border: 0,
             opacity: canSave ? 1 : 0.35, cursor: canSave ? 'pointer' : 'not-allowed',
           }}
@@ -315,27 +340,6 @@ export function AddSheet({
             : 'Enter an amount'}
         </button>
 
-        {editing && onDelete && (
-          <button
-            type="button"
-            onClick={() => void onDelete(editing.local_id)}
-            style={{
-              width: '100%', background: 'var(--danger-soft)', color: 'var(--danger)', padding: 13,
-              marginTop: 'var(--s2)', borderRadius: 'var(--r-md)', fontSize: 'var(--fs-sm)',
-              fontWeight: 700, border: 0, cursor: 'pointer',
-            }}
-          >Delete transaction</button>
-        )}
-
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            width: '100%', background: 'transparent', color: 'var(--text-dim)', padding: 13,
-            marginTop: 'var(--s2)', borderRadius: 'var(--r-md)', fontSize: 'var(--fs-sm)',
-            fontWeight: 700, border: 0, cursor: 'pointer',
-          }}
-        >Cancel</button>
       </div>
     </div>
   );

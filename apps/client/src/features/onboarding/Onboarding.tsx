@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { isoDay } from '../budget/cycle.js';
 import { formatMoney, toMinor } from '@spendwise/shared-types';
 import { Icon } from '../../design-system/components.js';
 import { Logo } from '../../design-system/Logo.js';
@@ -18,7 +19,29 @@ import { Logo } from '../../design-system/Logo.js';
 export interface OnboardingResult {
   displayName: string;
   baseCurrency: string;
-  monthlyIncomeMinor: number;
+  /**
+   * Expected income per CYCLE, not per month.
+   *
+   * Someone paid £500 a week does not earn £2,000 a month — they earn £2,000
+   * in eight months of the year and £2,500 in four. There is no correct value
+   * for a monthly figure, which is why the question is asked per pay packet.
+   */
+  expectedIncomeMinor: number;
+  /**
+   * What is in their pocket the day they set the app up.
+   *
+   * Everything is worked out from this. Without it the app inferred a balance
+   * from the last payday and the expected wage — money that, for anyone
+   * joining mid-cycle, had already been spent.
+   */
+  openingCashMinor: number;
+  cycleKind: 'days' | 'monthly';
+  cycleLengthDays: number | null;
+  cycleAnchorDate: string | null;
+  cycleAnchorDay: number | null;
+  /** Accruals replay from here rather than from the epoch. */
+  /** Null when the balance question was skipped — see cashKnown. */
+  budgetStartDate: string | null;
   budgets: Array<{ name: string; icon: string; colour: string; limitMinor: number }>;
   /**
    * Recurring commitments, kept apart from day-to-day money.
@@ -27,7 +50,17 @@ export interface OnboardingResult {
    * mixing it into the spending budget makes "safe to spend" meaningless. It
    * has to be declared at setup, not left for the user to discover later.
    */
-  fixedCosts: Array<{ name: string; icon: string; colour: string; limitMinor: number; dueDay: number }>;
+  fixedCosts: Array<{
+    name: string; icon: string; colour: string; limitMinor: number; dueDay: number;
+    /**
+     * What is already put by for this bill.
+     *
+     * Without it, signing up on the 25th means being asked to fund a full
+     * month's rent out of six days' income, and the first week reads as an
+     * accusation rather than a plan.
+     */
+    openingMinor: number;
+  }>;
 }
 
 export interface OnboardingProps {
@@ -63,7 +96,16 @@ const FIXED_SUGGESTED = [
   { name: 'Gym',           icon: 'fitness',      colour: '#94A3B8', dueDay: 10 },
 ];
 
-type Step = 0 | 1 | 2 | 3 | 4 | 5;
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/*
+ * Derived, not typed out twice.
+ *
+ * The label and the progress pips were both hardcoded to 6 while the flow had
+ * grown to 7, so the last screen read "Step 7 of 6" above a bar that could not
+ * reach the end. One constant, and the two cannot drift apart again.
+ */
+const TOTAL_STEPS = 7;
 
 export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
   const [step, setStep] = useState<Step>(0);
@@ -72,28 +114,54 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
   const [income, setIncome] = useState('');
   const [chosen, setChosen] = useState<string[]>(SUGGESTED.slice(0, 5).map((c) => c.name));
   const [limits, setLimits] = useState<Record<string, string>>({});
-  const [fixedChosen, setFixedChosen] = useState<string[]>([]);
+  /*
+   * Which bills the person actually pays.
+   *
+   * Derived from the amounts rather than held separately: filling a figure in
+   * IS choosing it, so there is no second list to keep in step — and no way
+   * for a bill to be "selected" with nothing against it, which used to save a
+   * £0 commitment that then showed up on every screen.
+   */
   const [fixedAmounts, setFixedAmounts] = useState<Record<string, string>>({});
   const [fixedDays, setFixedDays] = useState<Record<string, string>>({});
+  /* How often money arrives. Weekly is first because it is the case the old
+     monthly-only model served worst. */
+  const [payEvery, setPayEvery] = useState<7 | 14 | 28 | 'monthly'>('monthly');
+  const [lastPayday, setLastPayday] = useState<string>(isoDay(new Date()));
+  /*
+   * What is in your pocket today.
+   *
+   * The one question that makes joining mid-cycle honest. Without it the app
+   * back-dated to your last payday and planned around a full pay packet that
+   * had already been spent — someone starting on a Tuesday with £200 left was
+   * budgeted as though they had £500.
+   */
+  const [cashNow, setCashNow] = useState<string>('');
 
   const incomeMinor = useMemo(() => {
     try { return income ? toMinor(income, currency) : 0; } catch { return 0; }
   }, [income, currency]);
+  /*
+   * What they said is in their pocket today.
+   *
+   * The step offers Skip, so blank means unknown — not zero. The two must
+   * stay apart downstream: the whole app is bounded by cash when the figure
+   * is known, and treating a skipped question as "you have nothing" would
+   * clamp a perfectly solvent account to £0 a day.
+   */
+  const cashGiven = cashNow.trim() !== '';
+  const cashMinor = useMemo(() => {
+    if (!cashNow.trim()) return 0;
+    try { return toMinor(cashNow, currency); } catch { return 0; }
+  }, [cashNow, currency]);
 
-  /* Suggested limits are derived from what they actually earn, so the numbers
-     look like their life rather than a generic template. */
-  function suggestedFor(name: string): number {
-    const c = SUGGESTED.find((s) => s.name === name);
-    if (!c || incomeMinor <= 0) return 0;
-    return Math.round((incomeMinor * c.share) / 100) * 100; // round to a whole unit
-  }
-
+  /* A blank box means blank. This used to fall back to a share of income, so
+     leaving a field alone quietly created a budget nobody chose — and the
+     total at the bottom moved for reasons that were not on screen. */
   function limitFor(name: string): number {
     const typed = limits[name];
-    if (typed !== undefined && typed !== '') {
-      try { return toMinor(typed, currency); } catch { return 0; }
-    }
-    return suggestedFor(name);
+    if (typed === undefined || typed === '') return 0;
+    try { return toMinor(typed, currency); } catch { return 0; }
   }
 
   const totalBudget = chosen.reduce((s, n) => s + limitFor(n), 0);
@@ -108,6 +176,9 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
     if (Number.isInteger(typed) && typed >= 1 && typed <= 31) return typed;
     return FIXED_SUGGESTED.find((f) => f.name === name)?.dueDay ?? 1;
   }
+  const fixedChosen = FIXED_SUGGESTED
+    .map((f) => f.name)
+    .filter((n) => (fixedAmounts[n] ?? '').trim() !== '' && fixedAmountFor(n) > 0);
   const totalFixed = fixedChosen.reduce((s, n) => s + fixedAmountFor(n), 0);
 
   function finish(): void {
@@ -116,7 +187,23 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
       // makes Profile say the person is called "there".
       displayName: name.trim(),
       baseCurrency: currency,
-      monthlyIncomeMinor: incomeMinor,
+      expectedIncomeMinor: incomeMinor,
+      cycleKind: payEvery === 'monthly' ? 'monthly' : 'days',
+      cycleLengthDays: payEvery === 'monthly' ? null : payEvery,
+      cycleAnchorDate: payEvery === 'monthly' ? null : lastPayday,
+      cycleAnchorDay: payEvery === 'monthly'
+        ? new Date(`${lastPayday}T00:00:00`).getDate() : null,
+      /*
+       * Budgeting starts TODAY, not at the last payday.
+       *
+       * The cash figure below is what is in hand right now, so the ledger has
+       * to open now too. Opening it at the last payday would replay days that
+       * already happened against a balance measured after them.
+       */
+      /* Null when skipped: it is the date the balance was measured, and an
+         unanswered question has no measurement to date. See cashKnown. */
+      budgetStartDate: cashGiven ? isoDay(new Date()) : null,
+      openingCashMinor: cashMinor,
       budgets: chosen.map((n) => {
         const c = SUGGESTED.find((s) => s.name === n)!;
         return { name: c.name, icon: c.icon, colour: c.colour, limitMinor: limitFor(n) };
@@ -126,12 +213,13 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         return {
           name: c.name, icon: c.icon, colour: c.colour,
           limitMinor: fixedAmountFor(n), dueDay: fixedDayFor(n),
+          openingMinor: 0,
         };
       }),
     });
   }
 
-  const next = (): void => setStep((s) => Math.min(5, s + 1) as Step);
+  const next = (): void => setStep((s) => Math.min(7, s + 1) as Step);
   const back = (): void => setStep((s) => Math.max(0, s - 1) as Step);
 
   return (
@@ -141,11 +229,11 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
         {step > 0 && (
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <span style={stepLabel}>Step {step} of 5</span>
+              <span style={stepLabel}>Step {step} of {TOTAL_STEPS}</span>
               <button type="button" onClick={onSkip} style={skipLink}>Skip setup</button>
             </div>
             <div style={progressRow} aria-hidden="true" role="progressbar">
-              {[1, 2, 3, 4, 5].map((i) => (
+              {Array.from({ length: TOTAL_STEPS }, (_, n) => n + 1).map((i) => (
                 <i key={i} style={{ ...bar, background: i <= step ? 'var(--brand)' : 'var(--surface-3)' }} />
               ))}
             </div>
@@ -170,18 +258,75 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
             <input
               autoFocus value={name} onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
-              placeholder="Jahid" aria-label="Your name" autoComplete="given-name"
+              aria-label="Your name" autoComplete="given-name"
               maxLength={24} style={field}
             />
             <Footer onBack={back} onNext={next} nextLabel="Continue" skip={next} />
           </div>
         )}
 
-        {/* ── 2. earnings ────────────────────────────────────────────── */}
+        {/* ── 2. the pay cycle ───────────────────────────────────────── */}
         {step === 2 && (
           <div style={card}>
-            <h1 style={h1}>Monthly income</h1>
-            <p style={lede}>Your take-home pay, after tax.</p>
+            <h1 style={h1}>How are you paid?</h1>
+            <p style={lede}>Everything is budgeted around this, so it is worth getting right.</p>
+
+            <div style={{ display: 'grid', gap: 'var(--s2)', margin: 'var(--s5) 0' }}>
+              {([[7, 'Every week'], [14, 'Every two weeks'],
+                 [28, 'Every four weeks'], ['monthly', 'Once a month']] as const).map(([v, label]) => {
+                const on = payEvery === v;
+                return (
+                  <button
+                    key={String(v)} type="button" aria-pressed={on}
+                    onClick={() => setPayEvery(v)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 'var(--s3)', width: '100%',
+                      padding: '14px var(--s4)', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                      textAlign: 'left', fontSize: 'var(--fs-md)', fontWeight: 700,
+                      background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
+                      border: `1.5px solid ${on ? 'var(--brand)' : 'var(--line)'}`,
+                      color: on ? 'var(--text)' : 'var(--text-muted)',
+                    }}
+                  >
+                    <span aria-hidden style={{
+                      width: 18, height: 18, borderRadius: 999, flexShrink: 0,
+                      border: `2px solid ${on ? 'var(--brand)' : 'var(--line-strong)'}`,
+                      background: on ? 'var(--brand)' : 'transparent',
+                    }} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p style={{ ...hint, marginTop: 0 }}>
+              {payEvery === 'monthly' ? 'When were you last paid?' : 'When were you last paid?'}
+            </p>
+            <input
+              type="date" value={lastPayday} max={isoDay(new Date())}
+              onChange={(e) => setLastPayday(e.target.value || isoDay(new Date()))}
+              aria-label="Last payday"
+              style={{ ...field, colorScheme: 'dark' }}
+            />
+            <p style={hint}>
+              {/* Boundaries are counted from this date in both directions, so it
+                  only has to be a real payday — not the first one. */}
+              Pay periods are counted from this date.
+            </p>
+
+            <Footer onBack={back} onNext={next} nextLabel="Continue" />
+          </div>
+        )}
+
+        {/* ── 3. earnings ────────────────────────────────────────────── */}
+        {step === 3 && (
+          <div style={card}>
+            <h1 style={h1}>{payEvery === 'monthly' ? 'Monthly income' : 'Income each time'}</h1>
+            <p style={lede}>
+              {payEvery === 'monthly'
+                ? 'Your take-home pay, after tax.'
+                : 'What lands in your account each pay packet, after tax.'}
+            </p>
 
             <div style={segRow} role="group" aria-label="Currency">
               {CURRENCIES.map((c) => (
@@ -199,17 +344,51 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
                 autoFocus inputMode="decimal" value={income}
                 onChange={(e) => setIncome(e.target.value.replace(/[^0-9.]/g, '').slice(0, 9))}
                 onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
-                placeholder="0" aria-label="Monthly income"
+                // Tracks the same condition as the heading above, which
+                // already switches to "Income each time" for non-monthly pay
+                // — a screen reader was announcing "Monthly income" while the
+                // visible heading said something else entirely.
+                aria-label={payEvery === 'monthly' ? 'Monthly income' : 'Income each time'}
                 style={amountInput} size={Math.max(1, income.length || 1)}
               />
             </div>
+
+            <p style={hint}>You can change this later in Profile.</p>
 
             <Footer onBack={back} onNext={next} nextLabel="Continue" skip={next} />
           </div>
         )}
 
-        {/* ── 3. categories ──────────────────────────────────────────── */}
-        {step === 3 && (
+        {step === 4 && (
+          <div style={card}>
+            <h1 style={h1}>What have you got right now?</h1>
+            <p style={lede}>
+              Everything you can actually spend today — current account, cash,
+              whatever you would count if someone asked. Not next month's wages.
+            </p>
+
+            <div style={amountRow}>
+              <span style={amountCur}>{formatMoney(0, currency).replace(/[\d.,\s]/g, '')}</span>
+              <input
+                autoFocus inputMode="decimal" value={cashNow}
+                onChange={(e) => setCashNow(e.target.value.replace(/[^0-9.]/g, '').slice(0, 9))}
+                onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
+                aria-label="Money you have right now"
+                style={amountInput} size={Math.max(1, cashNow.length || 1)}
+              />
+            </div>
+
+            <p style={hint}>
+              Everything is worked out from this, so a rough figure beats a
+              blank one. You can correct it in Profile.
+            </p>
+
+            <Footer onBack={back} onNext={next} nextLabel="Continue" skip={next} />
+          </div>
+        )}
+
+        {/* ── 4. categories ──────────────────────────────────────────── */}
+        {step === 5 && (
           <div style={card}>
             <h1 style={h1}>What do you spend on?</h1>
             <p style={lede}>Pick the ones you use.</p>
@@ -233,11 +412,11 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
           </div>
         )}
 
-        {/* ── 4. budgets ─────────────────────────────────────────────── */}
-        {step === 4 && (
+        {/* ── 5. budgets ─────────────────────────────────────────────── */}
+        {step === 6 && (
           <div style={card}>
             <h1 style={h1}>How much for each?</h1>
-            <p style={lede}>Set a monthly limit for each.</p>
+            <p style={lede}>Set a limit for each.</p>
 
             <div style={{ display: 'grid', gap: 10, marginBottom: 'var(--s4)' }}>
               {chosen.map((n) => {
@@ -245,21 +424,37 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
                 return (
                   <label key={n} style={budgetRow}>
                     <Icon name={c.icon} size={30} colour={c.colour} />
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{c.name}</span>
-                    <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>
-                      {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                    <span style={{
+                      flex: 1, minWidth: 0, fontSize: 'var(--fs-md)', fontWeight: 700,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{c.name}</span>
+                    {/* The amount reads as one unit: symbol and figure share a
+                        bordered field rather than floating loose in the row. */}
+                    <span style={{
+                      display: 'flex', alignItems: 'baseline', gap: 1, flexShrink: 0,
+                      background: 'var(--surface)', border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-md)', padding: '7px 10px',
+                    }}>
+                      <span style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-sm)' }}>
+                        {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        value={limits[n] ?? ''}
+                        placeholder="0"
+                        onChange={(e) => setLimits((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                        aria-label={`${n} limit`}
+                        style={budgetInput}
+                      />
                     </span>
-                    <input
-                      inputMode="decimal"
-                      value={limits[n] ?? (suggestedFor(n) ? String(suggestedFor(n) / 100) : '')}
-                      onChange={(e) => setLimits((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                      aria-label={`${n} monthly limit`}
-                      style={budgetInput}
-                    />
                   </label>
                 );
               })}
             </div>
+
+            <p style={{ ...hint, marginTop: 0, marginBottom: 'var(--s3)' }}>
+              Add a limit for each. Leave one blank and it stays untracked.
+            </p>
 
             <div style={totalRow}>
               <span>Day-to-day budget</span>
@@ -277,77 +472,83 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
           </div>
         )}
 
-        {/* ── 5. fixed costs ─────────────────────────────────────────── */}
-        {step === 5 && (
+        {/* ── 6. fixed costs ─────────────────────────────────────────── */}
+        {step === 7 && (
           <div style={card}>
             <h1 style={h1}>Bills and fixed costs</h1>
             <p style={lede}>Regular payments, kept separate from your spending money.</p>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 'var(--s2) 0 var(--s3)' }}>
-              {FIXED_SUGGESTED.map((f) => {
-                const on = fixedChosen.includes(f.name);
+            {/*
+              One screen, like the budgets step before it.
+              
+              This used to be two phases: tap chips to choose, then a second
+              list appeared with three number fields crammed onto each row. The
+              chips said nothing about cost, the fields were unreadable on a
+              phone, and nothing explained why picking one made a new row show
+              up somewhere else. Filling a figure in IS choosing it — the same
+              idiom as "leave one blank and it stays untracked" a step earlier.
+            */}
+            <div style={{ display: 'grid', gap: 10, marginBottom: 'var(--s4)' }}>
+              {FIXED_SUGGESTED.map((c) => {
+                const amount = fixedAmounts[c.name] ?? '';
+                const on = amount.trim() !== '';
                 return (
-                  <button
-                    key={f.name}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setFixedChosen((p) => (on ? p.filter((x) => x !== f.name) : [...p, f.name]))}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
-                      borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                      background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
-                      border: `1px solid ${on ? 'var(--line-brand)' : 'var(--line)'}`,
-                      color: on ? 'var(--text)' : 'var(--text-dim)',
-                    }}
-                  >
-                    <i style={{ width: 8, height: 8, borderRadius: 999, background: f.colour, flexShrink: 0 }} />
-                    {f.name}
-                  </button>
+                  <label key={c.name} style={{
+                    ...budgetRow,
+                    border: `1px solid ${on ? 'var(--line-brand)' : 'transparent'}`,
+                    background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
+                  }}>
+                    <Icon name={c.icon} size={30} colour={c.colour} />
+                    <span style={{
+                      flex: 1, minWidth: 0, fontSize: 'var(--fs-md)', fontWeight: 700,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{c.name}</span>
+
+                    {/* The due day only matters once there is something to pay. */}
+                    {on && (
+                      <span style={{
+                        display: 'flex', alignItems: 'baseline', gap: 3, flexShrink: 0,
+                        background: 'var(--surface)', border: '1px solid var(--line)',
+                        borderRadius: 'var(--r-md)', padding: '7px 9px',
+                      }}>
+                        <span style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-2xs)', fontWeight: 700 }}>
+                          DAY
+                        </span>
+                        <input
+                          inputMode="numeric"
+                          value={fixedDays[c.name] ?? String(c.dueDay)}
+                          onChange={(e) => setFixedDays((p) => ({ ...p, [c.name]: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))}
+                          aria-label={`${c.name} due day`}
+                          style={{ ...budgetInput, width: 24, textAlign: 'center' }}
+                        />
+                      </span>
+                    )}
+
+                    <span style={{
+                      display: 'flex', alignItems: 'baseline', gap: 1, flexShrink: 0,
+                      background: 'var(--surface)', border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-md)', padding: '7px 10px',
+                    }}>
+                      <span style={{ color: 'var(--text-dim)', fontSize: 'var(--fs-sm)' }}>
+                        {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        value={amount}
+                        placeholder="0"
+                        onChange={(e) => setFixedAmounts((p) => ({ ...p, [c.name]: e.target.value.replace(/[^0-9.]/g, '') }))}
+                        aria-label={`${c.name} amount`}
+                        style={budgetInput}
+                      />
+                    </span>
+                  </label>
                 );
               })}
             </div>
 
-            {fixedChosen.length > 0 && (
-              <div style={{ display: 'grid', gap: 10, marginBottom: 'var(--s3)' }}>
-                {fixedChosen.map((n) => {
-                  const c = FIXED_SUGGESTED.find((f) => f.name === n)!;
-                  return (
-                    <div key={n} style={fixedRow}>
-                      <Icon name={c.icon} size={30} colour={c.colour} />
-                      <span style={{ minWidth: 0, fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.name}
-                      </span>
-                      <label style={miniField}>
-                        <span style={miniLabel}>Amount</span>
-                        <span style={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-                            {formatMoney(0, currency).replace(/[\d.,\s]/g, '')}
-                          </span>
-                          <input
-                            inputMode="decimal"
-                            value={fixedAmounts[n] ?? ''}
-                            onChange={(e) => setFixedAmounts((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                            placeholder="0"
-                            aria-label={`${n} monthly amount`}
-                            style={miniInput}
-                          />
-                        </span>
-                      </label>
-                      <label style={miniField}>
-                        <span style={miniLabel}>Day</span>
-                        <input
-                          inputMode="numeric"
-                          value={fixedDays[n] ?? String(c.dueDay)}
-                          onChange={(e) => setFixedDays((p) => ({ ...p, [n]: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))}
-                          aria-label={`${n} due day`}
-                          style={{ ...miniInput, width: 26, textAlign: 'center' }}
-                        />
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <p style={{ ...hint, marginTop: 0, marginBottom: 'var(--s3)' }}>
+              Put an amount against the ones you pay. Leave the rest blank.
+            </p>
 
             <div style={totalRow}>
               <span>Fixed costs</span>
@@ -357,11 +558,11 @@ export function Onboarding({ onDone, onSkip }: OnboardingProps): JSX.Element {
               <p style={{ ...hint, marginBottom: 'var(--s3)' }}>
                 {totalFixed + totalBudget > incomeMinor
                   ? `${formatMoney(totalFixed + totalBudget - incomeMinor, currency)} over your income.`
-                  : `${formatMoney(incomeMinor - totalFixed - totalBudget, currency)} left to save each month.`}
+                  : `${formatMoney(incomeMinor - totalFixed - totalBudget, currency)} left over.`}
               </p>
             )}
 
-            <Footer onBack={back} onNext={finish} nextLabel="Finish setup" />
+            <Footer onBack={back} onNext={finish} nextLabel="Finish setup" skip={finish} />
           </div>
         )}
       </div>
@@ -400,13 +601,14 @@ const page: React.CSSProperties = {
   background:
     'var(--page-bg)',
   color: 'var(--text)', fontFamily: "'Plus Jakarta Sans',-apple-system,system-ui,sans-serif",
-  display: 'grid', placeItems: 'center', padding: 'var(--s5)',
+  display: 'grid', placeItems: 'center',
+  padding: 'calc(var(--safe-top) + var(--s5)) var(--s5) calc(var(--safe-bottom) + var(--s5))',
 };
 /** Identical bloom to the sign-in screen — same size, position and stops. */
 const glow: React.CSSProperties = {
   position: 'absolute', top: '-22%', left: '50%', transform: 'translateX(-50%)',
   width: 'min(560px, 130vw)', aspectRatio: '1', borderRadius: '50%', pointerEvents: 'none',
-  background: 'radial-gradient(circle, rgba(99,102,241,.22) 0%, rgba(168,85,247,.08) 44%, transparent 70%)',
+  background: 'radial-gradient(circle, rgba(194,214,232,.20) 0%, rgba(159,199,178,.07) 44%, transparent 70%)',
 };
 const shell: React.CSSProperties = {
   position: 'relative', zIndex: 1, width: 'min(100%, 380px)', display: 'grid', gap: 'var(--s6)',
@@ -424,74 +626,63 @@ const backBtn: React.CSSProperties = {
   background: 'var(--surface-3)', border: 0, color: 'var(--text-muted)',
   display: 'grid', placeItems: 'center',
 };
-const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 };
-const bar: React.CSSProperties = { height: 4, borderRadius: 2, transition: 'background .25s' };
+const progressRow: React.CSSProperties = { display: 'grid', gridTemplateColumns: `repeat(${TOTAL_STEPS},1fr)`, gap: 6 };
+const bar: React.CSSProperties = { height: 4, borderRadius: 'var(--r-pill)', transition: 'background .25s' };
 /** No panel, matching sign-in. The step IS the screen. */
 const card: React.CSSProperties = { display: 'grid', gap: 'var(--s3)' };
-const h1: React.CSSProperties = { fontSize: 28, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.12 };
-const lede: React.CSSProperties = { fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s2)' };
+const h1: React.CSSProperties = { fontSize: 'var(--fs-hero)', fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.12 };
+const lede: React.CSSProperties = { fontSize: 'var(--fs-md)', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 'var(--s2)' };
 const field: React.CSSProperties = {
   width: '100%', background: 'var(--surface-2)', border: '1px solid var(--line-strong)',
-  borderRadius: 6, padding: '15px var(--s4)', fontSize: 16, fontWeight: 600,
-  color: 'var(--text)', outline: 'none',
+  borderRadius: 'var(--r-md)', padding: '15px var(--s4)',
+  /* 16px, not the 15px scale step: anything smaller makes iOS Safari zoom the
+     whole page when the field takes focus. */
+  fontSize: 16, fontWeight: 600, color: 'var(--text)', outline: 'none',
 };
 const segRow: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: 4,
-  background: 'var(--surface-2)', borderRadius: 999,
+  background: 'var(--surface-2)', borderRadius: 'var(--r-pill)',
 };
 const seg = (on: boolean): React.CSSProperties => ({
-  padding: '10px 0', borderRadius: 999, border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 800,
-  background: on ? 'var(--brand)' : 'transparent', color: on ? '#fff' : 'var(--text-dim)',
+  padding: '10px 0', borderRadius: 'var(--r-pill)', border: 0, cursor: 'pointer',
+  fontSize: 'var(--fs-sm)', fontWeight: 800,
+  background: on ? 'var(--brand)' : 'transparent', color: on ? 'var(--on-accent)' : 'var(--text-dim)',
 });
 const amountRow: React.CSSProperties = { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 2, padding: 'var(--s3) 0' };
-const amountCur: React.CSSProperties = { fontSize: 30, fontWeight: 800, color: 'var(--text-dim)' };
+const amountCur: React.CSSProperties = { fontSize: 26, fontWeight: 700, color: 'var(--text-dim)' };
 const amountInput: React.CSSProperties = {
-  background: 'none', border: 0, outline: 'none', fontSize: 46, fontWeight: 800,
-  letterSpacing: '-.04em', fontVariantNumeric: 'tabular-nums', color: 'var(--text)', minWidth: '1ch', padding: 0,
+  background: 'none', border: 0, outline: 'none', fontSize: 44, fontWeight: 700,
+  letterSpacing: '-.045em', fontVariantNumeric: 'tabular-nums', color: 'var(--text)', minWidth: '1ch', padding: 0,
 };
 const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 };
 const cell = (on: boolean): React.CSSProperties => ({
-  display: 'grid', justifyItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 16, cursor: 'pointer',
+  display: 'grid', justifyItems: 'center', gap: 7, padding: 'var(--s3) var(--s1)',
+  borderRadius: 'var(--r-xl)', cursor: 'pointer',
   background: on ? 'var(--brand-soft)' : 'var(--surface-2)',
-  border: `1.5px solid ${on ? 'rgba(99,102,241,.55)' : 'transparent'}`,
+  border: `1.5px solid ${on ? 'var(--brand)' : 'transparent'}`,
   color: on ? 'var(--text)' : 'var(--text-dim)',
 });
-/** Fixed columns: a flex row with fixed-width inputs overflowed the card. */
-const fixedRow: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '30px minmax(0,1fr) auto auto',
-  alignItems: 'center', gap: 10, padding: '10px 12px',
-  background: 'var(--surface-2)', borderRadius: 14,
-};
-const miniField: React.CSSProperties = { display: 'grid', gap: 2, justifyItems: 'end' };
-const miniLabel: React.CSSProperties = {
-  fontSize: 9, fontWeight: 700, letterSpacing: '.06em',
-  textTransform: 'uppercase', color: 'var(--text-dim)',
-};
-const miniInput: React.CSSProperties = {
-  width: 58, textAlign: 'right', background: 'transparent', border: 0, outline: 'none',
-  fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: 'var(--text)', padding: 0,
-};
 const budgetRow: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-  background: 'var(--surface-2)', borderRadius: 14,
+  display: 'flex', alignItems: 'center', gap: 'var(--s3)', padding: 'var(--s3)',
+  background: 'var(--surface-2)', borderRadius: 'var(--r-xl)',
 };
 const budgetInput: React.CSSProperties = {
-  width: 88, textAlign: 'right', background: 'transparent', border: 0, outline: 'none',
-  fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: 'var(--text)',
+  width: 72, background: 'transparent', border: 0, outline: 'none',
+  fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text)', padding: 0,
 };
 const totalRow: React.CSSProperties = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: 'var(--s3) var(--s4)', borderRadius: 14, background: 'var(--brand-soft)',
-  border: '1px solid rgba(99,102,241,.24)', fontSize: 'var(--fs-sm)', fontWeight: 700,
+  padding: 'var(--s3) var(--s4)', borderRadius: 'var(--r-xl)', background: 'var(--brand-soft)',
+  border: '1px solid var(--line-brand)', fontSize: 'var(--fs-sm)', fontWeight: 700,
 };
 const hint: React.CSSProperties = { fontSize: 'var(--fs-2xs)', color: 'var(--text-dim)' };
 /** Same metrics as sign-in, so the flow keeps one control language. */
 const baseBtn: React.CSSProperties = {
-  width: '100%', minHeight: 48, borderRadius: 4, border: 0,
-  fontSize: 15, fontWeight: 600, cursor: 'pointer',
+  width: '100%', minHeight: 48, borderRadius: 'var(--r-md)', border: 0,
+  fontSize: 'var(--fs-md)', fontWeight: 700, cursor: 'pointer',
 };
 const primary = (disabled: boolean): React.CSSProperties => ({
-  ...baseBtn, background: 'var(--brand)', color: '#fff',
+  ...baseBtn, background: 'var(--brand)', color: 'var(--on-accent)',
   opacity: disabled ? 0.35 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
 });
 const ghost: React.CSSProperties = {

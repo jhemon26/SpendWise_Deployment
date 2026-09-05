@@ -103,6 +103,71 @@ function ordinal(n: number): string {
   return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th')}`;
 }
 
+export interface PaceNote {
+  tone: VerdictTone;
+  icon: VerdictTone;
+  /** The fact, with the number in it: "£114.13 under pace". */
+  headline: string;
+  /** The consequence, set dim beside it. Empty when there is nothing to add. */
+  tail: string;
+}
+
+/**
+ * The line under the hero, as a figure rather than a phrase.
+ *
+ * verdictFor() says how you are doing in words. This says it in money: how far
+ * off the calendar's pace you actually are, and what that means for the rest of
+ * the month. A number you can act on beats a mood every time — "£114.13 under
+ * pace" tells you how much slack you have, where "Nicely under" does not.
+ *
+ * The tail carries the consequence, and only when there is one worth printing:
+ * the day the money runs out if the current rate holds, or how much of the
+ * month is left once it already has. No tail is better than a filler clause.
+ */
+export function paceNote(
+  d: Derived,
+  dayToDayMinor: number,
+  fmt: (minor: number) => string,
+  monthShort: string,
+): PaceNote {
+  if (dayToDayMinor <= 0) {
+    return { tone: 'steady', icon: 'steady', headline: 'No budget set yet', tail: '· add one and this tracks your pace' };
+  }
+  if (d.flexSpentMinor === 0 && d.dayOfMonth <= 2) {
+    return { tone: 'steady', icon: 'steady', headline: 'Clean slate', tail: '· nothing spent yet' };
+  }
+
+  // Already through it: pace is beside the point, the shortfall is the story.
+  if (d.leftMinor < 0) {
+    return {
+      tone: 'bad',
+      icon: 'bad',
+      headline: `${fmt(Math.abs(d.leftMinor))} over budget`,
+      tail: `· ${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} still to go`,
+    };
+  }
+
+  // Positive delta = spent more than the calendar expects by now.
+  const share = d.deltaMinor / dayToDayMinor;
+
+  if (d.deltaMinor > 0) {
+    const outOn = runsOutOn(d);
+    return {
+      tone: share > 0.15 ? 'bad' : 'warn',
+      icon: share > 0.15 ? 'bad' : 'warn',
+      headline: `${fmt(d.deltaMinor)} over pace`,
+      tail: outOn ? `· runs out ${outOn} ${monthShort} at this rate` : '',
+    };
+  }
+
+  return {
+    tone: share < -0.15 ? 'great' : 'good',
+    icon: share < -0.15 ? 'great' : 'good',
+    headline: `${fmt(Math.abs(d.deltaMinor))} under pace`,
+    tail: '· you’re ahead for the month',
+  };
+}
+
 /**
  * Flat multi-colour marks, drawn at 20px.
  *

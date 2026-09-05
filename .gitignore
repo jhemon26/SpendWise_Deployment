@@ -31,3 +31,7 @@ apps/client/ios/
 # stray screenshots dropped into the repo root — but brand assets are tracked
 /*.png
 !/HeadLogo.png
+
+# local deploy/ops scratch — these hold server credentials in plaintext
+.tmp/
+.vscode/

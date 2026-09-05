@@ -20,14 +20,14 @@ export interface TourStep {
 export const DEFAULT_STEPS: TourStep[] = [
   {
     target: 'safe-to-spend',
-    title: 'Available to spend',
-    body: 'Your spending budget, less what you have spent so far. Bills are counted separately, so this is money you can actually use.',
+    title: 'Yours to spend today',
+    body: 'What is left for the rest of this pay period, divided by the days remaining. Bills and savings are already set aside, so this is money you can actually use.',
   },
-  {
-    target: 'gauge',
-    title: 'Are you ahead or behind?',
-    body: 'The ring shows budget used. The white mark is where you should be today.',
-  },
+  /*
+   * The gauge step is gone with the gauge. It said in a ring what the daily
+   * figure now says in money, and pointing the tour at an element that no
+   * longer exists would spotlight nothing.
+   */
   {
     target: 'add',
     title: 'Add a spend in seconds',
@@ -36,7 +36,7 @@ export const DEFAULT_STEPS: TourStep[] = [
   {
     target: 'tabs',
     title: 'Everything else lives here',
-    body: 'Activity, Budgets and Insights.',
+    body: 'Activity, Budgets and Analytics.',
   },
 ];
 
@@ -91,7 +91,7 @@ export function Tour({ steps = DEFAULT_STEPS, onDone }: { steps?: TourStep[]; on
     // A huge spread shadow dims everything EXCEPT this box — one element, no
     // four-panel overlay to keep in sync.
     boxShadow: '0 0 0 9999px rgba(6,8,13,.85)',
-    border: '2px solid rgba(99,102,241,.9)',
+    border: '2px solid var(--brand)',
     pointerEvents: 'none',
     zIndex: 200,
     transition: 'all .28s cubic-bezier(.2,.9,.25,1)',
@@ -136,7 +136,7 @@ export function Tour({ steps = DEFAULT_STEPS, onDone }: { steps?: TourStep[]; on
           <button
             type="button"
             onClick={() => (last ? onDone() : setI(i + 1))}
-            style={{ flex: 2, minHeight: 46, borderRadius: 12, border: 0, background: 'var(--brand)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+            style={{ flex: 2, minHeight: 46, borderRadius: 12, border: 0, background: 'var(--brand)', color: 'var(--on-accent)', fontWeight: 700, cursor: 'pointer' }}
           >
             {last ? 'Done' : 'Next'}
           </button>

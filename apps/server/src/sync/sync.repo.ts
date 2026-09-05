@@ -34,6 +34,16 @@ export interface UserSettings {
   avatar_emoji: string;
   avatar_colour: string;
   monthly_income_minor: number;
+  /* The spending clock. See migration 008. */
+  cycle_kind: 'days' | 'monthly';
+  cycle_length_days: number | null;
+  cycle_anchor_date: string | null;
+  cycle_anchor_day: number | null;
+  /** Per CYCLE, not per month. */
+  expected_income_minor: number;
+  budget_start_date: string | null;
+  /** What the user held when budgeting started. The cash ledger opens here. */
+  opening_cash_minor: number;
   updated_at: string;
 }
 

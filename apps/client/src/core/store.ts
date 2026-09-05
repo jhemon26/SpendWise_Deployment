@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { uuidv7, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
+import { uuidv7, flowFields, type Bank, type Category, type Transaction } from '@spendwise/shared-types';
 import type { StorageAdapter } from './db/adapter.js';
 
 /**
@@ -26,7 +26,32 @@ export interface AppState {
   displayName: string;
   baseCurrency: string;
   /** Monthly take-home pay. */
+  /**
+   * Superseded by expectedIncomeMinor, which is per CYCLE. Kept until every
+   * screen reads the new field; migration 009 drops the column.
+   */
   monthlyIncomeMinor: number;
+
+  /* ── the spending clock (see features/budget/cycle.ts) ── */
+  cycleKind: 'days' | 'monthly';
+  /** 7, 14 or 28. Null when the cycle is monthly. */
+  cycleLengthDays: number | null;
+  /** Any real payday; boundaries are counted from it in both directions. */
+  cycleAnchorDate: string | null;
+  /** Day of month the cycle turns over. Null when the cycle is days-based. */
+  cycleAnchorDay: number | null;
+  /** Expected income per CYCLE, not per month. */
+  expectedIncomeMinor: number;
+  /** Accruals replay from here, so a new account is not billed for the past. */
+  budgetStartDate: string | null;
+  /**
+   * What the user held when budgeting started.
+   *
+   * The one figure that makes a mid-cycle join honest: without it the app
+   * planned around a full pay packet that had already been spent. May be
+   * negative — starting in the red is a real situation.
+   */
+  openingCashMinor: number;
   /** Emoji avatar; empty means fall back to initials. */
   avatarEmoji: string;
   avatarColour: string;
@@ -37,13 +62,15 @@ export interface AppState {
   removeTransaction: (db: StorageAdapter, localId: string) => Promise<void>;
   upsertCategory: (db: StorageAdapter, c: Partial<Category> & { name: string }) => Promise<Category>;
   removeCategory: (db: StorageAdapter, localId: string) => Promise<void>;
-  setSettings: (p: Partial<Pick<AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency' | 'avatarEmoji' | 'avatarColour' | 'monthlyIncomeMinor'>>) => void;
+  setSettings: (p: Partial<Settings>) => void;
   upsertBank: (db: StorageAdapter, b: Partial<Bank> & { name: string }) => Promise<Bank>;
   removeBank: (db: StorageAdapter, localId: string) => Promise<void>;
 }
 
 export interface NewTransaction {
   amountMinor: number;
+  /** Setting money aside into a pot, rather than spending or earning it. */
+  isTransfer?: boolean;
   currency: string;
   categoryId: string | null;
   bankId: string | null;
@@ -81,6 +108,8 @@ const SETTINGS_KEY = 'sw.settings';
 export type Settings = Pick<
   AppState, 'dayToDayMinor' | 'savingsTargetMinor' | 'displayName' | 'baseCurrency'
   | 'avatarEmoji' | 'avatarColour' | 'monthlyIncomeMinor'
+  | 'cycleKind' | 'cycleLengthDays' | 'cycleAnchorDate' | 'cycleAnchorDay'
+  | 'expectedIncomeMinor' | 'budgetStartDate' | 'openingCashMinor'
 >;
 
 const DEFAULT_SETTINGS: Settings = {
@@ -92,6 +121,15 @@ const DEFAULT_SETTINGS: Settings = {
   avatarEmoji: '',
   avatarColour: '#6366F1',
   monthlyIncomeMinor: 0,
+  // Monthly on the 1st reproduces exactly what the app did before cycles
+  // existed, so an account that has never been configured behaves identically.
+  cycleKind: 'monthly',
+  cycleLengthDays: null,
+  cycleAnchorDate: null,
+  cycleAnchorDay: 1,
+  expectedIncomeMinor: 0,
+  budgetStartDate: null,
+  openingCashMinor: 0,
 };
 
 function loadSettings(): Settings {
@@ -111,6 +149,30 @@ function loadSettings(): Settings {
         ? parsed.avatarColour : DEFAULT_SETTINGS.avatarColour,
       monthlyIncomeMinor: Number.isFinite(parsed.monthlyIncomeMinor)
         ? parsed.monthlyIncomeMinor as number : DEFAULT_SETTINGS.monthlyIncomeMinor,
+      // A half-written cycle would make cycleFor divide by zero, so each field
+      // falls back independently rather than trusting the stored blob.
+      cycleKind: parsed.cycleKind === 'days' ? 'days' : DEFAULT_SETTINGS.cycleKind,
+      cycleLengthDays: [7, 14, 28].includes(Number(parsed.cycleLengthDays))
+        ? Number(parsed.cycleLengthDays) : DEFAULT_SETTINGS.cycleLengthDays,
+      cycleAnchorDate: typeof parsed.cycleAnchorDate === 'string'
+        ? parsed.cycleAnchorDate : DEFAULT_SETTINGS.cycleAnchorDate,
+      cycleAnchorDay: Number.isFinite(parsed.cycleAnchorDay)
+        ? Number(parsed.cycleAnchorDay) : DEFAULT_SETTINGS.cycleAnchorDay,
+      /*
+       * Adopt the old monthly figure when the new one has never been set.
+       *
+       * Migration 008 copied monthly_income_minor across on the server, but a
+       * device whose localStorage predates cycles loads expectedIncomeMinor as
+       * 0 and pushes that straight back — silently undoing the migration and
+       * leaving a real account reporting no income at all.
+       */
+      expectedIncomeMinor: Number.isFinite(parsed.expectedIncomeMinor) && Number(parsed.expectedIncomeMinor) > 0
+        ? parsed.expectedIncomeMinor as number
+        : (Number.isFinite(parsed.monthlyIncomeMinor) ? Number(parsed.monthlyIncomeMinor) : 0),
+      budgetStartDate: typeof parsed.budgetStartDate === 'string'
+        ? parsed.budgetStartDate : DEFAULT_SETTINGS.budgetStartDate,
+      openingCashMinor: Number.isFinite(parsed.openingCashMinor)
+        ? Number(parsed.openingCashMinor) : DEFAULT_SETTINGS.openingCashMinor,
     };
   } catch {
     // Private mode, quota, corrupt JSON — defaults are always usable.
@@ -127,6 +189,13 @@ export const settingsOf = (s: AppState): Settings => ({
   avatarEmoji: s.avatarEmoji,
   avatarColour: s.avatarColour,
   monthlyIncomeMinor: s.monthlyIncomeMinor,
+  cycleKind: s.cycleKind,
+  cycleLengthDays: s.cycleLengthDays,
+  cycleAnchorDate: s.cycleAnchorDate,
+  cycleAnchorDay: s.cycleAnchorDay,
+  expectedIncomeMinor: s.expectedIncomeMinor,
+  budgetStartDate: s.budgetStartDate,
+  openingCashMinor: s.openingCashMinor,
 });
 
 export function clearSettings(): void {
@@ -156,7 +225,18 @@ export const useApp = create<AppState>()((set, get) => ({
   addTransaction: async (db, draft) => {
     const { deviceId, baseCurrency } = get();
     const occurred = draft.occurredAt ?? nowIso();
-    const signed = draft.isIncome ? Math.abs(draft.amountMinor) : -Math.abs(draft.amountMinor);
+    /*
+     * Sign convention.
+     *
+     * Income is positive, spending negative — and a TRANSFER keeps whatever
+     * sign it was given, because it runs both ways: positive puts money into a
+     * pot, negative takes it back out. Forcing -abs here (as every non-income
+     * row used to get) made every set-aside subtract from the pot it was meant
+     * to fill, and the pot then clamped at zero so nothing visibly happened.
+     */
+    const signed = draft.isTransfer
+      ? draft.amountMinor
+      : draft.isIncome ? Math.abs(draft.amountMinor) : -Math.abs(draft.amountMinor);
 
     const rec: Transaction = {
       local_id: uuidv7(),
@@ -177,6 +257,7 @@ export const useApp = create<AppState>()((set, get) => ({
       note: null,
       occurred_at: occurred,
       is_income: draft.isIncome,
+      is_transfer: draft.isTransfer ?? false,
       pending: false,
     };
 
@@ -209,8 +290,21 @@ export const useApp = create<AppState>()((set, get) => ({
     const rec: Category = existing
       ? { ...existing, ...c, updated_at: nowIso(), sync_status: 'pending' }
       : {
+          /*
+           * Flow shape as the DEFAULT, then whatever the caller passed.
+           *
+           * This used to spread flowFields() and then copy a hand-written list
+           * of six fields, which silently dropped kind, pot_kind, recurrence,
+           * anchor_date, target_date and opening_minor. Onboarding builds bills
+           * with billFields() — every one of them was written to the database
+           * as a flow, and only survived because isPot() falls back to the
+           * legacy is_fixed column. Spreading the caller last means a new field
+           * on Category is carried without anyone remembering to add it here.
+           */
+          ...flowFields(),
           local_id: uuidv7(),
           ...envelope(deviceId),
+          ...c,
           name: c.name,
           icon: c.icon ?? 'other',
           colour: c.colour ?? '#6366F1',
@@ -239,10 +333,10 @@ export const useApp = create<AppState>()((set, get) => ({
 
   setSettings: (p) => {
     set(p);
-    const { dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour, monthlyIncomeMinor } = get();
+    const next = settingsOf(get());
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        dayToDayMinor, savingsTargetMinor, displayName, baseCurrency, avatarEmoji, avatarColour, monthlyIncomeMinor,
+        ...next,
       }));
     } catch {
       // Persisting is best-effort; the in-memory update already happened.
@@ -255,6 +349,7 @@ export const useApp = create<AppState>()((set, get) => ({
     const rec: Bank = existing
       ? { ...existing, ...b, updated_at: nowIso(), sync_status: 'pending' }
       : {
+          ...flowFields(),
           local_id: uuidv7(),
           ...envelope(deviceId),
           name: b.name,

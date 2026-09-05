@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { uuidv7, type SyncPushResponse } from '@spendwise/shared-types';
+import { uuidv7, flowFields, type SyncPushResponse } from '@spendwise/shared-types';
 import { MemoryAdapter } from '../db/adapter.js';
 import { SyncEngine, type SyncTransport } from './engine.js';
 
@@ -277,7 +277,7 @@ describe('onPulled', () => {
     local_id: 'c-1', server_id: 'c-1', created_at: NOW.toISOString(), updated_at: NOW.toISOString(),
     deleted_at: null, sync_status: 'synced', version: 1, device_id: 'server',
     name: 'Groceries', icon: 'groceries', colour: '#14B8A6', limit_minor: 32000,
-    is_fixed: false, due_day: null, ...over,
+    is_fixed: false, due_day: null, ...flowFields(), ...over,
   });
 
   it('fires when rows are written, so the caller can reload its own copy', async () => {
